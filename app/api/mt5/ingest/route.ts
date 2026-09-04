@@ -5,7 +5,7 @@ const SUPABASE_URL='https://bdakeikxbumaftbdylet.supabase.co';
 const SUPABASE_KEY='sb_publishable_551Oulnh5G-hTwziT9al-Q_ok0rUyBR';
 const SYMBOL='NAS100';
 
-type Payload={token?:string;symbol?:string;brokerTimeRaw?:string;brokerTimeUtc?:string;brokerUtcOffsetSeconds?:number;candles?:Candle[];chunkIndex?:number;chunkTotal?:number;uploadId?:string;reset?:boolean};
+type Payload={token?:string;symbol?:string;brokerTimeRaw?:string;brokerTimeUtc?:string;brokerUtcOffsetSeconds?:number;candles?:Candle[];chunkIndex?:number;chunkTotal?:number;uploadId?:string;retryCount?:number;reset?:boolean};
 
 async function rpc(name:string,body:Record<string,unknown>){
  const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`,{
@@ -50,6 +50,10 @@ export async function GET(req:NextRequest){
      brokerUtcOffsetSeconds:status.broker_utc_offset_seconds??null,
      analyzedAt:status.last_seen_at??null,
      received:Number(status.candle_count??0),
+     syncStatus:status.sync_status??'IDLE',
+     syncChunkIndex:Number(status.chunk_index??-1),
+     syncChunkTotal:Number(status.chunk_total??0),
+     syncRetryCount:Number(status.retry_count??0),
      lastCandle:candles.at(-1)??null,
      candles
    });
@@ -65,11 +69,15 @@ export async function POST(req:NextRequest){
  if(expected&&body.token!==expected)return NextResponse.json({ok:false,error:'Unauthorized'},{status:401});
  if(!body.symbol||!Array.isArray(body.candles)||body.candles.length<1)return NextResponse.json({ok:false,error:'Expected symbol and candles[]'},{status:400});
  try{
-   const result=await rpc('silverbullet_ingest_chunk',{
+   const result=await rpc('silverbullet_ingest_chunk_v2',{
      p_symbol:body.symbol,
      p_broker_time_raw:body.brokerTimeRaw??null,
      p_broker_time_utc:body.brokerTimeUtc??null,
      p_broker_utc_offset_seconds:Number(body.brokerUtcOffsetSeconds)||0,
+     p_upload_id:body.uploadId??body.symbol,
+     p_chunk_index:Number(body.chunkIndex)||0,
+     p_chunk_total:Number(body.chunkTotal)||1,
+     p_retry_count:Number(body.retryCount)||0,
      p_candles:body.candles
    });
    return NextResponse.json({ok:true,chunkIndex:Number(body.chunkIndex)||0,chunkTotal:Number(body.chunkTotal)||1,complete:(Number(body.chunkIndex)||0)>=(Number(body.chunkTotal)||1)-1,database:'persistent',result});
