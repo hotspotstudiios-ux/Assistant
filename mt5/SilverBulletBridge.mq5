@@ -1,11 +1,11 @@
 #property strict
-#property version   "0.100"
+#property version   "0.110"
 #property description "Read-only M1 candle bridge for SilverBulletAI"
 
 input string ApiUrl = "https://assistant-ochre-five.vercel.app/api/mt5/ingest";
 input string BridgeToken = "";
 input string SymbolToSend = "";
-input int MinutesToSend = 900;
+input int MinutesToSend = 2880;
 input int SendEverySeconds = 30;
 
 datetime lastSend = 0;
@@ -37,16 +37,21 @@ void OnTick() {
       return;
    }
 
+   int brokerUtcOffsetSeconds = (int)(TimeCurrent() - TimeGMT());
+   datetime brokerUtc = TimeCurrent() - brokerUtcOffsetSeconds;
+
    string json = "{";
    json += "\"token\":\"" + JsonEscape(BridgeToken) + "\",";
    json += "\"symbol\":\"" + JsonEscape(sym) + "\",";
-   json += "\"brokerTime\":\"" + IsoTime(TimeCurrent()) + "\",";
+   json += "\"brokerTimeUtc\":\"" + IsoTime(brokerUtc) + "\",";
+   json += "\"brokerUtcOffsetSeconds\":" + IntegerToString(brokerUtcOffsetSeconds) + ",";
    json += "\"candles\":[";
 
    for(int i=copied-1; i>=0; i--) {
+      datetime utcTime = rates[i].time - brokerUtcOffsetSeconds;
       json += StringFormat(
          "{\"time\":\"%s\",\"open\":%.8f,\"high\":%.8f,\"low\":%.8f,\"close\":%.8f}",
-         IsoTime(rates[i].time), rates[i].open, rates[i].high, rates[i].low, rates[i].close
+         IsoTime(utcTime), rates[i].open, rates[i].high, rates[i].low, rates[i].close
       );
       if(i > 0) json += ",";
    }
