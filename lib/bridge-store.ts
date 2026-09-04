@@ -3,7 +3,8 @@ import type { Candle, Signal } from './engine';
 export type BridgeSnapshot = {
   connected: boolean;
   symbol: string | null;
-  brokerTime: string | null;
+  brokerTimeRaw: string | null;
+  brokerTimeUtc: string | null;
   brokerUtcOffsetSeconds: number | null;
   analyzedAt: string | null;
   received: number;
@@ -22,7 +23,8 @@ export function getBridgeStore(): BridgeSnapshot {
     globalThis.__silverBulletBridge = {
       connected: false,
       symbol: null,
-      brokerTime: null,
+      brokerTimeRaw: null,
+      brokerTimeUtc: null,
       brokerUtcOffsetSeconds: null,
       analyzedAt: null,
       received: 0,
