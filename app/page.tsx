@@ -51,6 +51,7 @@ export default function Home(){
   const[disp,setDisp]=useState(1.5);
   const[body,setBody]=useState(.6);
   const[breakClose,setBreakClose]=useState(.05);
+  const[sweepDepth,setSweepDepth]=useState(.02);
   const[layers,setLayers]=useState<Layers>({swings:true,sweeps:true,structure:true,fvgs:true,displacement:false});
 
   async function refresh(){
@@ -69,7 +70,7 @@ export default function Home(){
   useEffect(()=>{if(mode==='history'&&date)loadDay(date)},[mode,date]);
 
   const candles=mode==='live'?(bridge?.candles??[]):history;
-  const pa=useMemo(()=>analyzePriceAction(candles,{swingLeft:swing,swingRight:swing,displacementRangeMultiple:disp,minBodyPercent:body,minBreakCloseMultiple:breakClose}),[candles,swing,disp,body,breakClose]);
+  const pa=useMemo(()=>analyzePriceAction(candles,{swingLeft:swing,swingRight:swing,displacementRangeMultiple:disp,minBodyPercent:body,minBreakCloseMultiple:breakClose,minSweepDepthMultiple:sweepDepth}),[candles,swing,disp,body,breakClose,sweepDepth]);
   const offset=bridge?.brokerUtcOffsetSeconds;
   const offsetLabel=offset==null?'—':`UTC${offset>=0?'+':''}${offset/3600}`;
   const latestBreak=pa.structureBreaks.at(-1);
@@ -85,7 +86,7 @@ export default function Home(){
       <Metric label="Candles" value={candles.length.toLocaleString()} sub={mode==='live'?'live window':date||'historical day'}/>
       <Metric label="Bias" value={pa.bias} sub={latestBreak?nyTime(latestBreak.time):'no break yet'}/>
       <Metric label="Swings" value={pa.swings.length}/>
-      <Metric label="Sweeps" value={pa.sweeps.length} sub={latestSweep?nyTime(latestSweep.time):'none'}/>
+      <Metric label="Sweeps" value={pa.sweeps.filter(x=>x.quality==='REJECTION').length} sub={latestSweep?latestSweep.quality:'none'}/>
       <Metric label="Structure" value={pa.structureBreaks.length}/>
       <Metric label="FVGs" value={pa.fvgs.length}/>
     </div>
@@ -97,6 +98,7 @@ export default function Home(){
         <label>Displacement range <b>{disp.toFixed(1)}×</b><input type="range" min="1" max="3" step=".1" value={disp} onChange={e=>setDisp(+e.target.value)}/></label>
         <label>Minimum body <b>{Math.round(body*100)}%</b><input type="range" min=".3" max=".9" step=".05" value={body} onChange={e=>setBody(+e.target.value)}/></label>
         <label>Break close strength <b>{breakClose.toFixed(2)}×</b><input type="range" min="0" max=".5" step=".01" value={breakClose} onChange={e=>setBreakClose(+e.target.value)}/></label>
+        <label>Sweep depth <b>{sweepDepth.toFixed(2)}×</b><input type="range" min="0" max=".3" step=".01" value={sweepDepth} onChange={e=>setSweepDepth(+e.target.value)}/></label>
         <div className="layergroup"><span>Chart Layers</span>{Object.entries(layers).map(([k,v])=><button key={k} className={v?'active':''} onClick={()=>setLayers(x=>({...x,[k]:!x[k as keyof Layers]}))}>{k}</button>)}</div>
       </aside>
 
@@ -111,7 +113,7 @@ export default function Home(){
 
     <div className="detailgrid">
       <section><div className="panelhead"><span>Latest Structure</span><small>{pa.bias}</small></div>{latestBreak?<div className="eventcard"><strong>{latestBreak.classification} · {latestBreak.direction}</strong><span>{nyTime(latestBreak.time)}</span><p>Closed through {latestBreak.levelLabel} {latestBreak.level.toFixed(2)} by {latestBreak.closeDistance.toFixed(2)} points ({latestBreak.closeDistanceMultiple.toFixed(2)}× average range).</p></div>:<p className="muted">No confirmed structure break in this sample.</p>}</section>
-      <section><div className="panelhead"><span>Latest Liquidity Event</span><small>{latestSweep?.closeBackInside?'rejected':'run'}</small></div>{latestSweep?<div className="eventcard"><strong>{latestSweep.direction} SWEEP</strong><span>{nyTime(latestSweep.time)}</span><p>Level {latestSweep.level.toFixed(2)} · depth {latestSweep.depth.toFixed(2)} · close back inside {latestSweep.closeBackInside?'yes':'no'}.</p></div>:<p className="muted">No sweep detected in this sample.</p>}</section>
+      <section><div className="panelhead"><span>Latest Liquidity Event</span><small>{latestSweep?.closeBackInside?'rejected':'run'}</small></div>{latestSweep?<div className="eventcard"><strong>{latestSweep.direction} {latestSweep.quality}</strong><span>{nyTime(latestSweep.time)}</span><p>{latestSweep.levelLabel} {latestSweep.level.toFixed(2)} · depth {latestSweep.depth.toFixed(2)} ({latestSweep.depthMultiple.toFixed(2)}× range) · wick rejection {Math.round(latestSweep.wickRejectionPercent*100)}%.</p></div>:<p className="muted">No sweep detected in this sample.</p>}</section>
       <section><div className="panelhead"><span>Displacement</span><small>{pa.displacements.length}</small></div><div className="eventlist">{pa.displacements.slice(-4).reverse().map((d,i)=><div key={i}><b>{d.direction}</b><span>{nyTime(d.time)}</span><small>{d.rangeMultiple.toFixed(2)}× range · {Math.round(d.bodyPercent*100)}% body</small></div>)}</div></section>
       <section><div className="panelhead"><span>FVG Quality</span><small>{pa.fvgs.filter(x=>x.displacementLinked).length} linked</small></div><div className="eventlist">{pa.fvgs.slice(-4).reverse().map((g,i)=><div key={i}><b>{g.direction}</b><span>{nyTime(g.time)}</span><small>{g.size.toFixed(2)} pts · {g.displacementLinked?'displacement linked':'unlinked'}</small></div>)}</div></section>
     </div>
