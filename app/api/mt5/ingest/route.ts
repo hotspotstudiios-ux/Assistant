@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { backtest, Candle } from '../../../../lib/engine';
+import { analyzePriceAction } from '../../../../lib/price-action';
 
 const SUPABASE_URL='https://bdakeikxbumaftbdylet.supabase.co';
 const SUPABASE_KEY='sb_publishable_551Oulnh5G-hTwziT9al-Q_ok0rUyBR';
@@ -47,7 +48,8 @@ export async function GET(req:NextRequest){
    if(date){
      const raw=await rpc('silverbullet_day_v2',{p_symbol:symbol,p_ny_date:date,p_timeframe:timeframe,p_source:source});
      const candles=(Array.isArray(raw)?raw:[]) as Candle[];
-     return NextResponse.json({ok:true,symbol,timeframe,source,date,candles,s8:backtest(candles,8)[0]??null,s9:backtest(candles,9)[0]??null});
+     const priceAction=analyzePriceAction(candles);
+     return NextResponse.json({ok:true,symbol,timeframe,source,date,candles,s8:backtest(candles,8)[0]??null,s9:backtest(candles,9)[0]??null,priceAction});
    }
    const live=await rpc('silverbullet_live_v2',{p_symbol:symbol,p_timeframe:timeframe,p_source:source,p_limit:720}) as {status?:Record<string,unknown>;candles?:Candle[]};
    const status=live?.status??{},candles=live?.candles??[];
