@@ -26,10 +26,14 @@ export async function GET(req:NextRequest){
    const mode=req.nextUrl.searchParams.get('mode')||'live';
    const symbol=req.nextUrl.searchParams.get('symbol')||SYMBOL;
    if(mode==='summary'){
-     const raw=await rpc('silverbullet_history_days',{p_symbol:symbol,p_days:30});
-     const candles=(Array.isArray(raw)?raw:[]) as Candle[];
-     const dates=[...new Set(candles.map(c=>nyDate(c.time)))].sort().reverse();
-     const rows=dates.map(date=>{const day=candles.filter(c=>nyDate(c.time)===date);return{date,candles:day.length,s8:compact(backtest(day,8)[0]),s9:compact(backtest(day,9)[0])}});
+     const rawDays=await rpc('silverbullet_recent_days',{p_symbol:symbol,p_days:30});
+     const days=(Array.isArray(rawDays)?rawDays:[]) as {date:string;candles:number}[];
+     const rows:{date:string;candles:number;s8:ReturnType<typeof compact>;s9:ReturnType<typeof compact>}[]=[];
+     for(const item of days){
+       const rawDay=await rpc('silverbullet_day',{p_symbol:symbol,p_ny_date:item.date});
+       const day=(Array.isArray(rawDay)?rawDay:[]) as Candle[];
+       rows.push({date:item.date,candles:item.candles,s8:compact(backtest(day,8)[0]),s9:compact(backtest(day,9)[0])});
+     }
      const valid=rows.flatMap(x=>[x.s8,x.s9]).filter((x):x is NonNullable<typeof x>=>Boolean(x&&x.validWindow));
      const wins=valid.filter(x=>x.result==='WIN').length,losses=valid.filter(x=>x.result==='LOSS').length,open=valid.filter(x=>x.result==='OPEN').length,closed=wins+losses;
      return NextResponse.json({ok:true,symbol,rows,stats:{days:rows.length,setups:valid.length,wins,losses,open,winRate:closed?wins/closed*100:0,netR:valid.reduce((a,x)=>a+x.r,0)}});
