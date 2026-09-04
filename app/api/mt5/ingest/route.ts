@@ -26,7 +26,8 @@ export async function GET(req:NextRequest){
    const mode=req.nextUrl.searchParams.get('mode')||'live';
    const symbol=req.nextUrl.searchParams.get('symbol')||SYMBOL;
    if(mode==='summary'){
-     const candles=(await rpc('silverbullet_history_days',{p_symbol:symbol,p_days:30})) as Candle[];
+     const raw=await rpc('silverbullet_history_days',{p_symbol:symbol,p_days:30});
+     const candles=(Array.isArray(raw)?raw:[]) as Candle[];
      const dates=[...new Set(candles.map(c=>nyDate(c.time)))].sort().reverse();
      const rows=dates.map(date=>{const day=candles.filter(c=>nyDate(c.time)===date);return{date,candles:day.length,s8:compact(backtest(day,8)[0]),s9:compact(backtest(day,9)[0])}});
      const valid=rows.flatMap(x=>[x.s8,x.s9]).filter((x):x is NonNullable<typeof x>=>Boolean(x&&x.validWindow));
@@ -35,7 +36,8 @@ export async function GET(req:NextRequest){
    }
    const date=req.nextUrl.searchParams.get('date');
    if(date){
-     const candles=(await rpc('silverbullet_day',{p_symbol:symbol,p_ny_date:date})) as Candle[];
+     const raw=await rpc('silverbullet_day',{p_symbol:symbol,p_ny_date:date});
+     const candles=(Array.isArray(raw)?raw:[]) as Candle[];
      return NextResponse.json({ok:true,symbol,date,candles,s8:backtest(candles,8)[0]??null,s9:backtest(candles,9)[0]??null});
    }
    const live=await rpc('silverbullet_live',{p_symbol:symbol,p_limit:720}) as {status?:Record<string,unknown>;candles?:Candle[]};
