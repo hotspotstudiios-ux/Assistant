@@ -2,9 +2,11 @@ import type { Candle } from './candles';
 
 export type Direction='BULLISH'|'BEARISH';
 export type StructureBias='BULLISH'|'BEARISH'|'NEUTRAL';
+export type SwingLabel='H'|'L'|'HH'|'LH'|'HL'|'LL';
 
 export type Swing={
   kind:'HIGH'|'LOW';
+  label:SwingLabel;
   time:string;
   price:number;
   index:number;
@@ -38,7 +40,9 @@ export type StructureBreak={
   index:number;
   levelTime:string;
   level:number;
+  levelLabel:SwingLabel;
   closeDistance:number;
+  closeDistanceMultiple:number;
   biasBefore:StructureBias;
   biasAfter:StructureBias;
 };
@@ -67,6 +71,7 @@ export type PriceActionAnalysis={
     swingRight:number;
     displacementRangeMultiple:number;
     minBodyPercent:number;
+    minBreakCloseMultiple:number;
   };
 };
 
@@ -74,16 +79,44 @@ const avg=(xs:number[])=>xs.length?xs.reduce((a,b)=>a+b,0)/xs.length:0;
 const range=(c:Candle)=>Math.max(0,c.high-c.low);
 const body=(c:Candle)=>Math.abs(c.close-c.open);
 
+type RawSwing=Omit<Swing,'label'>;
+
+function compressAlternatingSwings(swings:RawSwing[]):RawSwing[]{
+  const out:RawSwing[]=[];
+  for(const s of swings.sort((a,b)=>a.index-b.index)){
+    const last=out.at(-1);
+    if(!last||last.kind!==s.kind){out.push(s);continue}
+    const replace=s.kind==='HIGH'?s.price>=last.price:s.price<=last.price;
+    if(replace)out[out.length-1]=s;
+  }
+  return out;
+}
+
+function labelSwings(swings:RawSwing[]):Swing[]{
+  let lastHigh:number|null=null,lastLow:number|null=null;
+  return swings.map(s=>{
+    let label:SwingLabel;
+    if(s.kind==='HIGH'){
+      label=lastHigh===null?'H':s.price>lastHigh?'HH':'LH';
+      lastHigh=s.price;
+    }else{
+      label=lastLow===null?'L':s.price>lastLow?'HL':'LL';
+      lastLow=s.price;
+    }
+    return{...s,label};
+  });
+}
+
 export function detectSwings(c:Candle[],left=2,right=2):Swing[]{
-  const out:Swing[]=[];
+  const raw:RawSwing[]=[];
   for(let i=left;i<c.length-right;i++){
     const x=c[i],before=c.slice(i-left,i),after=c.slice(i+1,i+right+1);
     const high=before.every(z=>x.high>z.high)&&after.every(z=>x.high>=z.high);
     const low=before.every(z=>x.low<z.low)&&after.every(z=>x.low<=z.low);
-    if(high)out.push({kind:'HIGH',time:x.time,price:x.high,index:i,confirmedAtIndex:i+right});
-    if(low)out.push({kind:'LOW',time:x.time,price:x.low,index:i,confirmedAtIndex:i+right});
+    if(high)raw.push({kind:'HIGH',time:x.time,price:x.high,index:i,confirmedAtIndex:i+right});
+    if(low)raw.push({kind:'LOW',time:x.time,price:x.low,index:i,confirmedAtIndex:i+right});
   }
-  return out.sort((a,b)=>a.index-b.index);
+  return labelSwings(compressAlternatingSwings(raw));
 }
 
 export function detectSweeps(c:Candle[],swings:Swing[]):LiquiditySweep[]{
@@ -132,7 +165,11 @@ export function detectDisplacements(
   return out;
 }
 
-export function detectStructureBreaks(c:Candle[],swings:Swing[]):StructureBreak[]{
+export function detectStructureBreaks(
+  c:Candle[],
+  swings:Swing[],
+  minBreakCloseMultiple=.05
+):StructureBreak[]{
   const out:StructureBreak[]=[];
   const broken=new Set<string>();
   let bias:StructureBias='NEUTRAL';
@@ -142,11 +179,22 @@ export function detectStructureBreaks(c:Candle[],swings:Swing[]):StructureBreak[
     const high=[...confirmed].reverse().find(s=>s.kind==='HIGH'&&!broken.has('H:'+s.time));
     const low=[...confirmed].reverse().find(s=>s.kind==='LOW'&&!broken.has('L:'+s.time));
 
+    const baseline=avg(c.slice(Math.max(0,i-20),i).map(range).filter(v=>v>0));
+    if(baseline<=0)continue;
+
     let direction:Direction|null=null;
     let level:Swing|null=null;
-    if(high&&c[i].close>high.price){direction='BULLISH';level=high}
-    else if(low&&c[i].close<low.price){direction='BEARISH';level=low}
+    let closeDistance=0;
+
+    if(high&&c[i].close>high.price){
+      direction='BULLISH';level=high;closeDistance=c[i].close-high.price;
+    }else if(low&&c[i].close<low.price){
+      direction='BEARISH';level=low;closeDistance=low.price-c[i].close;
+    }
     if(!direction||!level)continue;
+
+    const closeDistanceMultiple=closeDistance/baseline;
+    if(closeDistanceMultiple<minBreakCloseMultiple)continue;
 
     const before=bias;
     const after:StructureBias=direction;
@@ -156,9 +204,8 @@ export function detectStructureBreaks(c:Candle[],swings:Swing[]):StructureBreak[
 
     out.push({
       direction,classification,time:c[i].time,index:i,
-      levelTime:level.time,level:level.price,
-      closeDistance:Math.abs(c[i].close-level.price),
-      biasBefore:before,biasAfter:after
+      levelTime:level.time,level:level.price,levelLabel:level.label,
+      closeDistance,closeDistanceMultiple,biasBefore:before,biasAfter:after
     });
 
     broken.add((level.kind==='HIGH'?'H:':'L:')+level.time);
@@ -200,6 +247,7 @@ export function analyzePriceAction(
     displacementRangeMultiple?:number;
     minBodyPercent?:number;
     minFvgSizeMultiple?:number;
+    minBreakCloseMultiple?:number;
   }
 ):PriceActionAnalysis{
   const swingLeft=options?.swingLeft??2;
@@ -207,16 +255,17 @@ export function analyzePriceAction(
   const displacementRangeMultiple=options?.displacementRangeMultiple??1.5;
   const minBodyPercent=options?.minBodyPercent??.6;
   const minFvgSizeMultiple=options?.minFvgSizeMultiple??.05;
+  const minBreakCloseMultiple=options?.minBreakCloseMultiple??.05;
 
   const swings=detectSwings(candles,swingLeft,swingRight);
   const sweeps=detectSweeps(candles,swings);
   const displacements=detectDisplacements(candles,20,displacementRangeMultiple,minBodyPercent);
-  const structureBreaks=detectStructureBreaks(candles,swings);
+  const structureBreaks=detectStructureBreaks(candles,swings,minBreakCloseMultiple);
   const fvgs=detectFVGs(candles,displacements,minFvgSizeMultiple);
   const bias=structureBreaks.at(-1)?.biasAfter??'NEUTRAL';
 
   return{
     bias,swings,sweeps,displacements,structureBreaks,fvgs,
-    meta:{candles:candles.length,swingLeft,swingRight,displacementRangeMultiple,minBodyPercent}
+    meta:{candles:candles.length,swingLeft,swingRight,displacementRangeMultiple,minBodyPercent,minBreakCloseMultiple}
   };
 }
