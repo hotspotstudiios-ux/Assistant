@@ -5,7 +5,7 @@ import { getBridgeStore, setBridgeStore } from '../../../../lib/bridge-store';
 type Payload = {
   token?: string;
   symbol?: string;
-  brokerTime?: string;
+  brokerTimeRaw?: string;
   brokerTimeUtc?: string;
   brokerUtcOffsetSeconds?: number;
   candles?: Candle[];
@@ -61,7 +61,8 @@ export async function POST(req: NextRequest) {
   const next = setBridgeStore({
     connected: true,
     symbol: body.symbol,
-    brokerTime: body.brokerTimeUtc ?? body.brokerTime ?? null,
+    brokerTimeRaw: body.brokerTimeRaw ?? null,
+    brokerTimeUtc: body.brokerTimeUtc ?? null,
     brokerUtcOffsetSeconds: Number.isFinite(Number(body.brokerUtcOffsetSeconds))
       ? Number(body.brokerUtcOffsetSeconds)
       : null,
