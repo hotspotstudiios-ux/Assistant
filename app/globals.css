@@ -1,0 +1,14 @@
+*{box-sizing:border-box}
+body{margin:0;background:#071018;color:#eef5ff;font-family:Arial,sans-serif}
+main{max-width:900px;margin:auto;padding:56px 20px}
+.head h1{font-size:46px;margin:10px 0}
+.head p{color:#9eb0c2}
+.pill{font-size:12px;letter-spacing:1.5px;border:1px solid #31485c;border-radius:99px;padding:7px 10px}
+.upload{display:block;margin:28px 0;padding:20px;border:1px dashed #3b5266;border-radius:16px;background:#0b1722}
+.upload input{display:block;margin-top:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+section,.note{background:#0d1b27;border:1px solid #1e3447;border-radius:18px;padding:22px}
+section h2{margin-top:0;font-size:18px}
+section strong{font-size:28px}
+.note{margin-top:16px;color:#aebdca;line-height:1.6}
+.err{color:#ff9e9e}
