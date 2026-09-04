@@ -36,7 +36,8 @@ export async function GET(req:NextRequest){
      }
      const valid=rows.flatMap(x=>[x.s8,x.s9]).filter((x):x is NonNullable<typeof x>=>Boolean(x&&x.validWindow));
      const wins=valid.filter(x=>x.result==='WIN').length,losses=valid.filter(x=>x.result==='LOSS').length,open=valid.filter(x=>x.result==='OPEN').length,closed=wins+losses;
-     return NextResponse.json({ok:true,symbol,rows,stats:{days:rows.length,setups:valid.length,wins,losses,open,winRate:closed?wins/closed*100:0,netR:valid.reduce((a,x)=>a+x.r,0)}});
+     const byHour=(hour:8|9)=>{const xs=rows.map(x=>hour===8?x.s8:x.s9).filter((x):x is NonNullable<typeof x>=>Boolean(x&&x.validWindow));const w=xs.filter(x=>x.result==='WIN').length,l=xs.filter(x=>x.result==='LOSS').length,o=xs.filter(x=>x.result==='OPEN').length,c=w+l;return{setups:xs.length,wins:w,losses:l,open:o,winRate:c?w/c*100:0,netR:xs.reduce((a,x)=>a+x.r,0)}};
+     return NextResponse.json({ok:true,symbol,rows,stats:{days:rows.length,setups:valid.length,wins,losses,open,winRate:closed?wins/closed*100:0,netR:valid.reduce((a,x)=>a+x.r,0)},byHour:{h8:byHour(8),h9:byHour(9)}});
    }
    const date=req.nextUrl.searchParams.get('date');
    if(date){
