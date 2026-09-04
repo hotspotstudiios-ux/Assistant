@@ -1,8 +1,8 @@
 import './globals.css';
 
 export const metadata = {
-  title: 'SilverBulletAI',
-  description: 'Rule-based Silver Bullet replay engine',
+  title: 'Price Action Lab',
+  description: 'Objective market structure and liquidity analysis engine',
 };
 
 export default function RootLayout({children}:{children:React.ReactNode}) {
