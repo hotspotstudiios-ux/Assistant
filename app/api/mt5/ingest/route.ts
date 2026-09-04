@@ -24,7 +24,14 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const expected = process.env.MT5_BRIDGE_TOKEN;
-  const body = await req.json() as Payload;
+
+  let body: Payload;
+  try {
+    const raw = (await req.text()).replace(/\0/g, '').trim();
+    body = JSON.parse(raw) as Payload;
+  } catch {
+    return NextResponse.json({ ok:false, error:'Invalid JSON payload' }, { status:400 });
+  }
 
   if (expected && body.token !== expected) {
     return NextResponse.json({ ok:false, error:'Unauthorized' }, { status:401 });
