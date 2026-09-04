@@ -23,3 +23,15 @@
 .syncMeta b{color:#fff;font-size:18px}
 .progressTrack{height:12px;background:#07131d;border:1px solid #1d3648;border-radius:999px;overflow:hidden;margin-top:10px}
 .progressFill{height:100%;background:linear-gradient(90deg,#2f9b70,#55d69b);border-radius:999px;transition:width .25s ease}
+
+.dbCard{margin-top:18px}
+.dbGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:14px}
+.dbGrid div{background:#07131d;border-radius:10px;padding:12px}
+.dbGrid span{display:block;color:#8198aa;font-size:10px;text-transform:uppercase;letter-spacing:.7px}
+.dbGrid b{display:block;color:#fff;margin-top:5px;font-size:14px}
+.hourCompare{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.hourMetrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.hourMetrics div{background:#07131d;border-radius:9px;padding:10px}
+.hourMetrics span{display:block;color:#8198aa;font-size:10px;text-transform:uppercase}
+.hourMetrics b{display:block;margin-top:5px;font-size:14px}
+@media(max-width:600px){.hourCompare{grid-template-columns:1fr}.hourMetrics{grid-template-columns:repeat(3,1fr)}}
