@@ -32,7 +32,7 @@ function Chart({candles,pa,layers}:{candles:Candle[];pa:PriceActionAnalysis;laye
     <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
       {layers.fvgs&&pa.fvgs.filter(g=>inView(g.index)).map((g,i)=><rect key={'f'+i} x={x(g.index)} y={y(g.high)} width={Math.max(4,w-x(g.index))} height={Math.max(2,y(g.low)-y(g.high))} className={g.direction==='BULLISH'?'fvg bull':'fvg bear'}/>)}
       {xs.map((c,i)=>{const xi=p+i*cw+cw/2,up=c.close>=c.open;return <g key={c.time} className={up?'up':'down'}><line x1={xi} x2={xi} y1={y(c.high)} y2={y(c.low)}/><rect x={xi-Math.max(1,cw*.28)} y={Math.min(y(c.open),y(c.close))} width={Math.max(2,cw*.56)} height={Math.max(1,Math.abs(y(c.open)-y(c.close)))}/></g>})}
-      {layers.swings&&pa.swings.filter(s=>inView(s.index)).map((s,i)=><g key={'s'+i}><circle cx={x(s.index)} cy={y(s.price)} r={3.5} className={s.kind==='HIGH'?'swing high':'swing low'}/></g>)}
+      {layers.swings&&pa.swings.filter(s=>inView(s.index)).map((s,i)=><g key={'s'+i}><circle cx={x(s.index)} cy={y(s.price)} r={3.5} className={s.kind==='HIGH'?'swing high':'swing low'}/><text x={x(s.index)+5} y={y(s.price)+(s.kind==='HIGH'?-6:12)} className="swingLabel">{s.label}</text></g>)}
       {layers.sweeps&&pa.sweeps.filter(s=>inView(s.index)).map((s,i)=><g key={'sw'+i}><circle cx={x(s.index)} cy={y(s.level)} r={5} className="sweep"/><text x={x(s.index)+6} y={y(s.level)-7} className="tag">SWEEP</text></g>)}
       {layers.structure&&pa.structureBreaks.filter(s=>inView(s.index)).map((s,i)=><g key={'b'+i}><line x1={x(s.index)} x2={x(s.index)} y1={12} y2={h-12} className={s.classification==='MSS'?'mss':'bos'}/><text x={x(s.index)+5} y={30+(i%3)*13} className="tag">{s.classification}</text></g>)}
       {layers.displacement&&pa.displacements.filter(d=>inView(d.index)).map((d,i)=><circle key={'d'+i} cx={x(d.index)} cy={y(candles[d.index].close)} r={7} className="displacement"/>)}
@@ -50,6 +50,7 @@ export default function Home(){
   const[swing,setSwing]=useState(2);
   const[disp,setDisp]=useState(1.5);
   const[body,setBody]=useState(.6);
+  const[breakClose,setBreakClose]=useState(.05);
   const[layers,setLayers]=useState<Layers>({swings:true,sweeps:true,structure:true,fvgs:true,displacement:false});
 
   async function refresh(){
@@ -68,7 +69,7 @@ export default function Home(){
   useEffect(()=>{if(mode==='history'&&date)loadDay(date)},[mode,date]);
 
   const candles=mode==='live'?(bridge?.candles??[]):history;
-  const pa=useMemo(()=>analyzePriceAction(candles,{swingLeft:swing,swingRight:swing,displacementRangeMultiple:disp,minBodyPercent:body}),[candles,swing,disp,body]);
+  const pa=useMemo(()=>analyzePriceAction(candles,{swingLeft:swing,swingRight:swing,displacementRangeMultiple:disp,minBodyPercent:body,minBreakCloseMultiple:breakClose}),[candles,swing,disp,body,breakClose]);
   const offset=bridge?.brokerUtcOffsetSeconds;
   const offsetLabel=offset==null?'—':`UTC${offset>=0?'+':''}${offset/3600}`;
   const latestBreak=pa.structureBreaks.at(-1);
@@ -95,6 +96,7 @@ export default function Home(){
         <label>Swing confirmation <b>{swing} / {swing}</b><input type="range" min="1" max="6" step="1" value={swing} onChange={e=>setSwing(+e.target.value)}/></label>
         <label>Displacement range <b>{disp.toFixed(1)}×</b><input type="range" min="1" max="3" step=".1" value={disp} onChange={e=>setDisp(+e.target.value)}/></label>
         <label>Minimum body <b>{Math.round(body*100)}%</b><input type="range" min=".3" max=".9" step=".05" value={body} onChange={e=>setBody(+e.target.value)}/></label>
+        <label>Break close strength <b>{breakClose.toFixed(2)}×</b><input type="range" min="0" max=".5" step=".01" value={breakClose} onChange={e=>setBreakClose(+e.target.value)}/></label>
         <div className="layergroup"><span>Chart Layers</span>{Object.entries(layers).map(([k,v])=><button key={k} className={v?'active':''} onClick={()=>setLayers(x=>({...x,[k]:!x[k as keyof Layers]}))}>{k}</button>)}</div>
       </aside>
 
@@ -108,7 +110,7 @@ export default function Home(){
     </div>
 
     <div className="detailgrid">
-      <section><div className="panelhead"><span>Latest Structure</span><small>{pa.bias}</small></div>{latestBreak?<div className="eventcard"><strong>{latestBreak.classification} · {latestBreak.direction}</strong><span>{nyTime(latestBreak.time)}</span><p>Closed through {latestBreak.level.toFixed(2)} by {latestBreak.closeDistance.toFixed(2)} points.</p></div>:<p className="muted">No confirmed structure break in this sample.</p>}</section>
+      <section><div className="panelhead"><span>Latest Structure</span><small>{pa.bias}</small></div>{latestBreak?<div className="eventcard"><strong>{latestBreak.classification} · {latestBreak.direction}</strong><span>{nyTime(latestBreak.time)}</span><p>Closed through {latestBreak.levelLabel} {latestBreak.level.toFixed(2)} by {latestBreak.closeDistance.toFixed(2)} points ({latestBreak.closeDistanceMultiple.toFixed(2)}× average range).</p></div>:<p className="muted">No confirmed structure break in this sample.</p>}</section>
       <section><div className="panelhead"><span>Latest Liquidity Event</span><small>{latestSweep?.closeBackInside?'rejected':'run'}</small></div>{latestSweep?<div className="eventcard"><strong>{latestSweep.direction} SWEEP</strong><span>{nyTime(latestSweep.time)}</span><p>Level {latestSweep.level.toFixed(2)} · depth {latestSweep.depth.toFixed(2)} · close back inside {latestSweep.closeBackInside?'yes':'no'}.</p></div>:<p className="muted">No sweep detected in this sample.</p>}</section>
       <section><div className="panelhead"><span>Displacement</span><small>{pa.displacements.length}</small></div><div className="eventlist">{pa.displacements.slice(-4).reverse().map((d,i)=><div key={i}><b>{d.direction}</b><span>{nyTime(d.time)}</span><small>{d.rangeMultiple.toFixed(2)}× range · {Math.round(d.bodyPercent*100)}% body</small></div>)}</div></section>
       <section><div className="panelhead"><span>FVG Quality</span><small>{pa.fvgs.filter(x=>x.displacementLinked).length} linked</small></div><div className="eventlist">{pa.fvgs.slice(-4).reverse().map((g,i)=><div key={i}><b>{g.direction}</b><span>{nyTime(g.time)}</span><small>{g.size.toFixed(2)} pts · {g.displacementLinked?'displacement linked':'unlinked'}</small></div>)}</div></section>
