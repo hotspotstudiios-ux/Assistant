@@ -58,7 +58,8 @@ function candidate(candles:Candle[],h:RefHour){
 export function modelState(c:Candle[],h:RefHour):ModelState{const x=candidate(c,h);return{stage:x.stage,direction:x.dir,refHigh:x.ref?.high??null,refLow:x.ref?.low??null,detail:x.detail}}
 export function backtest(c:Candle[],h:RefHour):Signal[]{
  const x=candidate(c,h);if(!('xs'in x)||!x.dir||!('touch'in x))return[];
- const{xs,sweep,ret,mss,mssLevel,fvg,touch}=x;
+ const xs=x.xs as Candle[];
+ const sweep=x.sweep as number,ret=x.ret as number,mss=x.mss as number,mssLevel=x.mssLevel as number,fvg=x.fvg as number,touch=x.touch as number;
  const three=xs.slice(fvg-2,fvg+1);
  const entry=x.dir==='LONG'?x.hi:x.lo;
  const stop=x.dir==='LONG'?Math.min(...three.map(z=>z.low)):Math.max(...three.map(z=>z.high));
