@@ -15,12 +15,16 @@ export type Swing={
 
 export type LiquiditySweep={
   direction:Direction;
+  quality:'REJECTION'|'RUN';
+  levelLabel:SwingLabel;
   time:string;
   index:number;
   levelTime:string;
   level:number;
   depth:number;
   closeBackInside:boolean;
+  depthMultiple:number;
+  wickRejectionPercent:number;
 };
 
 export type Displacement={
@@ -119,22 +123,35 @@ export function detectSwings(c:Candle[],left=2,right=2):Swing[]{
   return labelSwings(compressAlternatingSwings(raw));
 }
 
-export function detectSweeps(c:Candle[],swings:Swing[]):LiquiditySweep[]{
+export function detectSweeps(c:Candle[],swings:Swing[],minDepthMultiple=.02):LiquiditySweep[]{
   const out:LiquiditySweep[]=[];
   for(const s of swings){
     for(let i=Math.max(s.confirmedAtIndex+1,s.index+1);i<c.length;i++){
-      const x=c[i];
+      const x=c[i],r=range(x);
+      const baseline=avg(c.slice(Math.max(0,i-20),i).map(range).filter(v=>v>0));
+      if(r<=0||baseline<=0)continue;
+
       if(s.kind==='HIGH'&&x.high>s.price){
+        const depth=x.high-s.price,depthMultiple=depth/baseline;
+        if(depthMultiple<minDepthMultiple)continue;
+        const closeBackInside=x.close<s.price;
+        const upperWick=x.high-Math.max(x.open,x.close);
         out.push({
-          direction:'BEARISH',time:x.time,index:i,levelTime:s.time,level:s.price,
-          depth:x.high-s.price,closeBackInside:x.close<s.price
+          direction:'BEARISH',quality:closeBackInside?'REJECTION':'RUN',levelLabel:s.label,
+          time:x.time,index:i,levelTime:s.time,level:s.price,depth,closeBackInside,depthMultiple,
+          wickRejectionPercent:upperWick/r
         });
         break;
       }
       if(s.kind==='LOW'&&x.low<s.price){
+        const depth=s.price-x.low,depthMultiple=depth/baseline;
+        if(depthMultiple<minDepthMultiple)continue;
+        const closeBackInside=x.close>s.price;
+        const lowerWick=Math.min(x.open,x.close)-x.low;
         out.push({
-          direction:'BULLISH',time:x.time,index:i,levelTime:s.time,level:s.price,
-          depth:s.price-x.low,closeBackInside:x.close>s.price
+          direction:'BULLISH',quality:closeBackInside?'REJECTION':'RUN',levelLabel:s.label,
+          time:x.time,index:i,levelTime:s.time,level:s.price,depth,closeBackInside,depthMultiple,
+          wickRejectionPercent:lowerWick/r
         });
         break;
       }
@@ -248,6 +265,7 @@ export function analyzePriceAction(
     minBodyPercent?:number;
     minFvgSizeMultiple?:number;
     minBreakCloseMultiple?:number;
+    minSweepDepthMultiple?:number;
   }
 ):PriceActionAnalysis{
   const swingLeft=options?.swingLeft??2;
@@ -256,9 +274,10 @@ export function analyzePriceAction(
   const minBodyPercent=options?.minBodyPercent??.6;
   const minFvgSizeMultiple=options?.minFvgSizeMultiple??.05;
   const minBreakCloseMultiple=options?.minBreakCloseMultiple??.05;
+  const minSweepDepthMultiple=options?.minSweepDepthMultiple??.02;
 
   const swings=detectSwings(candles,swingLeft,swingRight);
-  const sweeps=detectSweeps(candles,swings);
+  const sweeps=detectSweeps(candles,swings,minSweepDepthMultiple);
   const displacements=detectDisplacements(candles,20,displacementRangeMultiple,minBodyPercent);
   const structureBreaks=detectStructureBreaks(candles,swings,minBreakCloseMultiple);
   const fvgs=detectFVGs(candles,displacements,minFvgSizeMultiple);
