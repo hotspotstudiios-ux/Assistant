@@ -61,11 +61,12 @@ export function backtest(c:Candle[],h:RefHour):Signal[]{
  const xs=x.xs as Candle[];
  const sweep=x.sweep as number,ret=x.ret as number,mss=x.mss as number,mssLevel=x.mssLevel as number,fvg=x.fvg as number,touch=x.touch as number;
  const three=xs.slice(fvg-2,fvg+1);
- const entry=x.dir==='LONG'?x.hi:x.lo;
+ const hi=x.hi as number,lo=x.lo as number;
+ const entry=x.dir==='LONG'?hi:lo;
  const stop=x.dir==='LONG'?Math.min(...three.map(z=>z.low)):Math.max(...three.map(z=>z.high));
  const risk=Math.abs(entry-stop);if(!risk)return[];
  const target2R=x.dir==='LONG'?entry+2*risk:entry-2*risk;
- const validWindow=x.validWindow;
+ const validWindow=Boolean(x.validWindow);
  let result:'WIN'|'LOSS'|'OPEN'|'REJECTED'=validWindow?'OPEN':'REJECTED',r=0;
  if(validWindow){
    for(const z of xs.slice(touch)){const sl=x.dir==='LONG'?z.low<=stop:z.high>=stop,tp=x.dir==='LONG'?z.high>=target2R:z.low<=target2R;if(sl&&tp){result='LOSS';r=-1;break}if(sl){result='LOSS';r=-1;break}if(tp){result='WIN';r=2;break}}
