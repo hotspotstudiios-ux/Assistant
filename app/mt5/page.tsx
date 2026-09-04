@@ -1,18 +1,18 @@
 export default function MT5Page() {
   return (
     <main>
-      <div className="head">
-        <span className="pill">MT5 BRIDGE</span>
-        <h1>Connect MetaTrader 5</h1>
-        <p>Read-only bridge for sending M1 candles from your MT5 terminal into SilverBulletAI.</p>
+      <div className="hero">
+        <div>
+          <span className="eyebrow">MT5 DATA BRIDGE</span>
+          <h1>Connect MetaTrader 5</h1>
+          <p>Read-only candle transport for the Price Action Lab.</p>
+        </div>
       </div>
       <section>
-        <h2>Connection flow</h2>
-        <p>Broker → MetaTrader 5 → SilverBulletBridge EA → /api/mt5/ingest → 8AM/9AM analysis</p>
+        <div className="panelhead"><span>Connection flow</span><small>M1 data</small></div>
+        <p>Broker → MetaTrader 5 → bridge EA → /api/mt5/ingest → persistent candle database → Price Action Engine.</p>
       </section>
-      <div className="note">
-        <b>Safety:</b> this build does not place, modify, or close trades. It only reads candle history and sends it to the analyzer.
-      </div>
+      <div className="footnote">This bridge does not place, modify, or close trades. It only reads candle history and sends market data to the analyzer.</div>
     </main>
   );
 }
