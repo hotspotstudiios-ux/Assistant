@@ -17,3 +17,9 @@
 .batchTable button small{display:block;color:#60798c;margin-top:3px}
 .batchTable button strong{font-size:11px}
 @media(max-width:600px){.stats{grid-template-columns:repeat(2,1fr)}.batchTable{max-height:300px}}
+
+.syncCard{margin-top:18px}
+.syncMeta,.syncFoot{display:flex;justify-content:space-between;align-items:center;color:#8aa1b3;font-size:12px;margin-top:14px}
+.syncMeta b{color:#fff;font-size:18px}
+.progressTrack{height:12px;background:#07131d;border:1px solid #1d3648;border-radius:999px;overflow:hidden;margin-top:10px}
+.progressFill{height:100%;background:linear-gradient(90deg,#2f9b70,#55d69b);border-radius:999px;transition:width .25s ease}
