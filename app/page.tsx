@@ -1,18 +1,119 @@
 'use client';
-import{useEffect,useMemo,useState}from'react';import{backtest,Candle,hourRange,modelState,Signal}from'../lib/engine';import type{PriceActionAnalysis}from'../lib/price-action';
-type DbStats={symbol:string;timeframe:string;source:string;candles:number;first:string|null;last:string|null;nyDays:number;lastSeen:string|null;syncStatus:string|null};type Bridge={connected:boolean;symbol:string|null;timeframe?:string;source?:string;dbStats?:DbStats;received:number;lastCandle:Candle|null;candles:Candle[];brokerUtcOffsetSeconds:number|null;brokerTimeRaw:string|null;brokerTimeUtc:string|null;syncStatus?:string;syncChunkIndex?:number;syncChunkTotal?:number;syncRetryCount?:number};
-type CompactSignal={referenceHour:8|9;direction:'LONG'|'SHORT';result:'WIN'|'LOSS'|'OPEN'|'REJECTED';r:number;validWindow:boolean;entryTime:string;rejectionReason:string|null};
-type SummaryRow={date:string;candles:number;s8:CompactSignal|null;s9:CompactSignal|null};
-type HourStats={setups:number;wins:number;losses:number;open:number;winRate:number;netR:number};type Summary={rows:SummaryRow[];stats:{days:number;setups:number;wins:number;losses:number;open:number;winRate:number;netR:number};byHour?:{h8:HourStats;h9:HourStats}};
-const nyDate=(iso:string)=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(iso));
-const nyTime=(iso:string)=>new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(iso));
+import {useEffect,useMemo,useState} from 'react';
+import type {Candle,CandleDay} from '../lib/candles';
+import {analyzePriceAction,type PriceActionAnalysis} from '../lib/price-action';
+
+type Bridge={
+  connected:boolean;symbol:string|null;timeframe?:string;source?:string;received:number;
+  lastCandle:Candle|null;candles:Candle[];brokerUtcOffsetSeconds:number|null;
+  brokerTimeRaw:string|null;brokerTimeUtc:string|null;syncStatus?:string;
+  dbStats?:{candles:number;nyDays:number;first:string|null;last:string|null};
+};
+
+type Layers={swings:boolean;sweeps:boolean;structure:boolean;fvgs:boolean;displacement:boolean};
+
+const nyTime=(iso:string)=>new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(iso));
 const dayLabel=(d:string)=>new Intl.DateTimeFormat('en-US',{timeZone:'UTC',month:'short',day:'2-digit',year:'numeric'}).format(new Date(d+'T12:00:00Z'));
-const utcTime=(iso:string)=>new Intl.DateTimeFormat('en-GB',{timeZone:'UTC',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(iso));
-function Chart({candles,signal,pa}:{candles:Candle[];signal?:Signal;pa?:PriceActionAnalysis|null}){let xs=candles;if(signal){const a=candles.findIndex(c=>c.time===signal.sweepTime),b=candles.findIndex(c=>c.time===signal.entryTime);if(a>=0&&b>=0)xs=candles.slice(Math.max(0,a-25),Math.min(candles.length,b+75))}else xs=candles.slice(-180);if(xs.length<2)return <div className="chart empty">Waiting for candles…</div>;const vals=[...xs.flatMap(x=>[x.high,x.low]),...(signal?[signal.entry,signal.stop,signal.target2R,signal.fvgLow,signal.fvgHigh,signal.mssLevel]:[])];const hi=Math.max(...vals),lo=Math.min(...vals),w=900,h=360,p=22,range=hi-lo||1,y=(v:number)=>p+(hi-v)/(range)*(h-p*2),cw=(w-p*2)/xs.length;const xAt=(t:string)=>{const i=xs.findIndex(c=>c.time===t);return i<0?null:p+i*cw+cw/2};const r8=hourRange(candles,8),r9=hourRange(candles,9),marks=signal?[['S',signal.sweepTime],['R',signal.returnTime],['MSS',signal.mssTime],['E',signal.entryTime]] as const:[],fvgX=signal?xAt(signal.fvgTime):null;return <div className="chart proof"><svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">{[r8?.high,r8?.low,r9?.high,r9?.low].map((v,i)=>v&&<line key={'l'+i} x1={0} x2={w} y1={y(v)} y2={y(v)} className={i<2?'liq l8':'liq l9'}/>)}{signal&&fvgX!==null&&<rect x={fvgX} y={y(signal.fvgHigh)} width={w-fvgX} height={Math.max(3,y(signal.fvgLow)-y(signal.fvgHigh))} className="fvgZone"/>}{signal&&[['entry',signal.entry],['sl',signal.stop],['tp',signal.target2R],['mssLine',signal.mssLevel]].map(([k,v])=><line key={String(k)} x1={0} x2={w} y1={y(Number(v))} y2={y(Number(v))} className={String(k)}/>)}{xs.map((c,i)=>{const x=p+i*cw+cw/2,up=c.close>=c.open;return <g key={i} className={up?'up':'down'}><line x1={x} x2={x} y1={y(c.high)} y2={y(c.low)}/><rect x={x-Math.max(1,cw*.28)} y={Math.min(y(c.open),y(c.close))} width={Math.max(2,cw*.56)} height={Math.max(1,Math.abs(y(c.open)-y(c.close)))}/></g>})}{pa?.fvgs.map((g,i)=>{const x=xAt(g.time);return x===null?null:<rect key={'paf'+i} x={x} y={y(g.high)} width={Math.max(4,w-x)} height={Math.max(2,y(g.low)-y(g.high))} className="paFvg"/>})}{pa?.sweeps.map((e,i)=>{const x=xAt(e.time);return x===null?null:<g key={'pas'+i}><circle cx={x} cy={y(e.level)} r={5} className="paSweep"/><text x={x+6} y={y(e.level)-6} className="paText">SWEEP</text></g>})}{pa?.mss.map((e,i)=>{const x=xAt(e.time);return x===null?null:<g key={'pam'+i}><line x1={x} x2={x} y1={12} y2={h-12} className="paMss"/><text x={x+5} y={34} className="paText">MSS</text></g>})}{marks.map(([label,t])=>{const x=xAt(t);return x===null?null:<g key={label}><line x1={x} x2={x} y1={8} y2={h-8} className="eventLine"/><text x={x+4} y={18} className="eventText">{label}</text></g>})}</svg><div className="legend"><span>8AM</span><span>9AM</span>{pa&&<><em>PA Sweep</em><em>PA MSS</em><em>PA FVG</em></>}{signal&&<><em>SB FVG</em><em>Entry/SL/TP</em></>}<b>{xs.at(-1)?.close.toFixed(2)}</b></div></div>}
-function Evidence({s}:{s:Signal}){return <div className="evidence"><div><span>Sweep</span><b>{nyTime(s.sweepTime)}</b></div><div><span>Return</span><b>{nyTime(s.returnTime)}</b></div><div><span>MSS</span><b>{nyTime(s.mssTime)} @ {s.mssLevel.toFixed(2)}</b></div><div><span>FVG</span><b>{s.fvgLow.toFixed(2)}–{s.fvgHigh.toFixed(2)}</b></div><div><span>Entry</span><b>{nyTime(s.entryTime)} @ {s.entry.toFixed(2)}</b></div><div><span>SL / TP</span><b>{s.stop.toFixed(2)} / {s.target2R.toFixed(2)}</b></div></div>}
-function State({hour,candles}:{hour:8|9;candles:Candle[]}){const st=modelState(candles,hour),s=backtest(candles,hour)[0],stages=['WAITING','SWEEP','RETURN','MSS','FVG','SIGNAL','EXPIRED'],active=Math.max(0,stages.indexOf(st.stage));return <section><div className="sectionTop"><h2>{hour}AM Model</h2><span className={'badge '+(st.stage==='SIGNAL'?'signal':st.stage==='EXPIRED'?'expired':'')}>{st.stage}</span></div><div className="steps">{stages.map((x,i)=><span key={x} className={i<=active?'done':''}>{x}</span>)}</div><p>{st.direction&&<b>{st.direction} · </b>}{st.detail}</p><div className="levels"><span>High <b>{st.refHigh?.toFixed(2)??'—'}</b></span><span>Low <b>{st.refLow?.toFixed(2)??'—'}</b></span></div>{s&&<Evidence s={s}/>}</section>}
-function Result({hour,candles}:{hour:8|9;candles:Candle[]}){const s=backtest(candles,hour)[0];return <section><div className="sectionTop"><h2>{hour}AM Backtest</h2>{s&&<span className={'badge '+(s.result==='REJECTED'?'expired':'')}>{s.result}</span>}</div>{!s?<p>No completed setup found.</p>:<><strong>{s.direction} · {s.result}</strong>{s.rejectionReason&&<p className="rejectReason">{s.rejectionReason}</p>}<Evidence s={s}/></>}</section>}
-function SyncProgress({b}:{b:Bridge|null}){const total=b?.syncChunkTotal??0,idx=b?.syncChunkIndex??-1,done=total>0?Math.min(total,idx+1):0,pct=total>0?Math.round(done/total*100):0,status=b?.syncStatus??'IDLE';return <section className="syncCard"><div className="sectionTop"><h2>History Sync</h2><span className={'badge '+(status==='COMPLETE'?'signal':status==='RETRYING'?'expired':'')}>{status}</span></div><div className="syncMeta"><span>{done} / {total||'—'} chunks</span><b>{pct}%</b></div><div className="progressTrack"><div className="progressFill" style={{width:pct+'%'}}/></div><div className="syncFoot"><span>{b?.received?.toLocaleString()??0} candles stored</span>{(b?.syncRetryCount??0)>0&&<span>Retry {b?.syncRetryCount}</span>}</div></section>}
-function CandleDatabase({b}:{b:Bridge|null}){const d=b?.dbStats;return <section className="dbCard"><div className="sectionTop"><h2>Candle Database</h2><span className="badge">{d?.timeframe??'M1'} · {d?.source??'Vantage'}</span></div><div className="dbGrid"><div><span>Candles</span><b>{Number(d?.candles??0).toLocaleString()}</b></div><div><span>NY days</span><b>{d?.nyDays??0}</b></div><div><span>First candle</span><b>{d?.first?new Date(d.first).toISOString().slice(0,10):'—'}</b></div><div><span>Latest candle</span><b>{d?.last?new Date(d.last).toISOString().replace('T',' ').slice(0,16)+' UTC':'—'}</b></div></div></section>}
-function TimeDebug({b}:{b:Bridge|null}){const last=b?.lastCandle??null,offset=b?.brokerUtcOffsetSeconds??null,offsetLabel=offset===null?'—':`UTC${offset>=0?'+':''}${offset/3600}`;return <section className="timeDebug"><div className="sectionTop"><h2>Time Debug</h2><span className="badge">{offsetLabel}</span></div><div className="evidence"><div><span>Broker raw</span><b>{b?.brokerTimeRaw??'—'}</b></div><div><span>Bridge UTC</span><b>{b?.brokerTimeUtc?utcTime(b.brokerTimeUtc):'—'}</b></div><div><span>Latest candle UTC</span><b>{last?utcTime(last.time):'—'}</b></div><div><span>Latest candle NY</span><b>{last?nyTime(last.time):'—'}</b></div></div></section>}
-export default function Home(){const[tab,setTab]=useState<'live'|'backtest'>('live'),[b,setB]=useState<Bridge|null>(null),[summary,setSummary]=useState<Summary|null>(null),[date,setDate]=useState(''),[test,setTest]=useState<Candle[]>([]),[priceAction,setPriceAction]=useState<PriceActionAnalysis|null>(null);async function refresh(){try{const r=await fetch('/api/mt5/ingest?mode=live',{cache:'no-store'}),j=await r.json();if(j.ok)setB(j)}catch{}}async function loadSummary(){try{const r=await fetch('/api/mt5/ingest?mode=summary',{cache:'no-store'}),j=await r.json();if(j.ok){setSummary({rows:j.rows,stats:j.stats,byHour:j.byHour});if(!date&&j.rows?.[0]?.date)setDate(j.rows[0].date)}}catch{}}async function loadDay(d:string){if(!d)return;const r=await fetch('/api/mt5/ingest?date='+encodeURIComponent(d),{cache:'no-store'}),j=await r.json();if(j.ok){setTest(j.candles??[]);setPriceAction(j.priceAction??null)}}useEffect(()=>{refresh();const id=setInterval(refresh,5000);return()=>clearInterval(id)},[]);useEffect(()=>{if(tab==='backtest')loadSummary()},[tab]);useEffect(()=>{if(tab==='backtest'&&date)loadDay(date)},[tab,date]);const all=b?.candles??[],latest=[...new Set(all.map(c=>nyDate(c.time)))].sort().reverse()[0]??'',live=latest?all.filter(c=>nyDate(c.time)===latest):all,liveSignal=backtest(live,8)[0]??backtest(live,9)[0],testSignal=backtest(test,8)[0]??backtest(test,9)[0],offset=b?.brokerUtcOffsetSeconds??null,offsetLabel=offset===null?'—':`UTC${offset>=0?'+':''}${offset/3600}`,rows=summary?.rows??[],stats=summary?.stats??{days:0,setups:0,wins:0,losses:0,open:0,winRate:0,netR:0};return <main><header><span className="pill">SILVERBULLETAI V2.3</span><h1>{b?.symbol??'NAS100'} Signal Engine</h1><div className="connection"><i className={b?.connected?'on':''}/>{b?.connected?'MT5 CONNECTED':'WAITING FOR MT5'} <span>Broker {offsetLabel}</span><b>{b?.lastCandle?.close.toFixed(2)??'—'}</b></div></header><SyncProgress b={b}/><CandleDatabase b={b}/><TimeDebug b={b}/><div className="tabs"><button className={tab==='live'?'active':''} onClick={()=>setTab('live')}>Live Scanner</button><button className={tab==='backtest'?'active':''} onClick={()=>setTab('backtest')}>Backtest Lab</button></div>{tab==='live'?<><Chart candles={live} signal={liveSignal}/><div className="grid"><State hour={8} candles={live}/><State hour={9} candles={live}/></div></>:<><div className="stats"><div><span>Days loaded</span><b>{stats.days}</b></div><div><span>Valid setups</span><b>{stats.setups}</b></div><div><span>Wins / Losses</span><b>{stats.wins} / {stats.losses}</b></div><div><span>Win rate</span><b>{stats.winRate.toFixed(1)}%</b></div><div><span>Net R</span><b>{stats.netR>=0?'+':''}{stats.netR.toFixed(1)}R</b></div><div><span>Open</span><b>{stats.open}</b></div></div><div className="hourCompare"><section><div className="sectionTop"><h2>8AM Model</h2><span className="badge">{summary?.byHour?.h8.setups??0} setups</span></div><div className="hourMetrics"><div><span>W / L</span><b>{summary?.byHour?.h8.wins??0} / {summary?.byHour?.h8.losses??0}</b></div><div><span>Win rate</span><b>{(summary?.byHour?.h8.winRate??0).toFixed(1)}%</b></div><div><span>Net R</span><b>{(summary?.byHour?.h8.netR??0)>=0?'+':''}{(summary?.byHour?.h8.netR??0).toFixed(1)}R</b></div></div></section><section><div className="sectionTop"><h2>9AM Model</h2><span className="badge">{summary?.byHour?.h9.setups??0} setups</span></div><div className="hourMetrics"><div><span>W / L</span><b>{summary?.byHour?.h9.wins??0} / {summary?.byHour?.h9.losses??0}</b></div><div><span>Win rate</span><b>{(summary?.byHour?.h9.winRate??0).toFixed(1)}%</b></div><div><span>Net R</span><b>{(summary?.byHour?.h9.netR??0)>=0?'+':''}{(summary?.byHour?.h9.netR??0).toFixed(1)}R</b></div></div></section></div><div className="batchTable"><div className="batchHead"><b>Date</b><b>8AM</b><b>9AM</b></div>{rows.map(x=><button key={x.date} onClick={()=>setDate(x.date)} className={date===x.date?'selected':''}><span>{dayLabel(x.date)}<small>{x.candles} M1</small></span><strong>{x.s8?.validWindow?x.s8.result:'NO TRADE'}</strong><strong>{x.s9?.validWindow?x.s9.result:'NO TRADE'}</strong></button>)}</div><div className="toolbar"><label>Inspect NY session <select value={date} onChange={e=>setDate(e.target.value)}>{rows.map(x=><option key={x.date}>{x.date}</option>)}</select></label><span>{test.length} M1 candles</span></div><Chart candles={test} signal={testSignal} pa={priceAction}/><div className="grid"><Result hour={8} candles={test}/><Result hour={9} candles={test}/></div></>}<div className="note">Canonical database mode: candles are stored by symbol + timeframe + source + UTC timestamp in Supabase. Live Scanner receives only the latest 720 candles, Backtest Lab computes from persistent history, and selected sessions load on demand.</div></main>}
+
+function Metric({label,value,sub}:{label:string;value:string|number;sub?:string}){
+  return <div className="metric"><span>{label}</span><b>{value}</b>{sub&&<small>{sub}</small>}</div>
+}
+
+function Chart({candles,pa,layers}:{candles:Candle[];pa:PriceActionAnalysis;layers:Layers}){
+  const xs=candles.slice(-240);
+  if(xs.length<2)return <div className="chart empty">Waiting for candles…</div>;
+  const hi=Math.max(...xs.map(x=>x.high)),lo=Math.min(...xs.map(x=>x.low)),w=1000,h=430,p=24,range=hi-lo||1;
+  const y=(v:number)=>p+(hi-v)/(range)*(h-p*2),cw=(w-p*2)/xs.length;
+  const visibleStart=candles.length-xs.length;
+  const x=(index:number)=>p+(index-visibleStart)*cw+cw/2;
+  const inView=(index:number)=>index>=visibleStart&&index<candles.length;
+
+  return <div className="chart">
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+      {layers.fvgs&&pa.fvgs.filter(g=>inView(g.index)).map((g,i)=><rect key={'f'+i} x={x(g.index)} y={y(g.high)} width={Math.max(4,w-x(g.index))} height={Math.max(2,y(g.low)-y(g.high))} className={g.direction==='BULLISH'?'fvg bull':'fvg bear'}/>)}
+      {xs.map((c,i)=>{const xi=p+i*cw+cw/2,up=c.close>=c.open;return <g key={c.time} className={up?'up':'down'}><line x1={xi} x2={xi} y1={y(c.high)} y2={y(c.low)}/><rect x={xi-Math.max(1,cw*.28)} y={Math.min(y(c.open),y(c.close))} width={Math.max(2,cw*.56)} height={Math.max(1,Math.abs(y(c.open)-y(c.close)))}/></g>})}
+      {layers.swings&&pa.swings.filter(s=>inView(s.index)).map((s,i)=><g key={'s'+i}><circle cx={x(s.index)} cy={y(s.price)} r={3.5} className={s.kind==='HIGH'?'swing high':'swing low'}/></g>)}
+      {layers.sweeps&&pa.sweeps.filter(s=>inView(s.index)).map((s,i)=><g key={'sw'+i}><circle cx={x(s.index)} cy={y(s.level)} r={5} className="sweep"/><text x={x(s.index)+6} y={y(s.level)-7} className="tag">SWEEP</text></g>)}
+      {layers.structure&&pa.structureBreaks.filter(s=>inView(s.index)).map((s,i)=><g key={'b'+i}><line x1={x(s.index)} x2={x(s.index)} y1={12} y2={h-12} className={s.classification==='MSS'?'mss':'bos'}/><text x={x(s.index)+5} y={30+(i%3)*13} className="tag">{s.classification}</text></g>)}
+      {layers.displacement&&pa.displacements.filter(d=>inView(d.index)).map((d,i)=><circle key={'d'+i} cx={x(d.index)} cy={y(candles[d.index].close)} r={7} className="displacement"/>)}
+    </svg>
+    <div className="legend"><span>{xs.length} visible candles</span><b>{xs.at(-1)?.close.toFixed(2)}</b></div>
+  </div>
+}
+
+export default function Home(){
+  const[mode,setMode]=useState<'live'|'history'>('live');
+  const[bridge,setBridge]=useState<Bridge|null>(null);
+  const[days,setDays]=useState<CandleDay[]>([]);
+  const[date,setDate]=useState('');
+  const[history,setHistory]=useState<Candle[]>([]);
+  const[swing,setSwing]=useState(2);
+  const[disp,setDisp]=useState(1.5);
+  const[body,setBody]=useState(.6);
+  const[layers,setLayers]=useState<Layers>({swings:true,sweeps:true,structure:true,fvgs:true,displacement:false});
+
+  async function refresh(){
+    try{const r=await fetch('/api/mt5/ingest?mode=live',{cache:'no-store'}),j=await r.json();if(j.ok)setBridge(j)}catch{}
+  }
+  async function loadDays(){
+    try{const r=await fetch('/api/mt5/ingest?mode=days',{cache:'no-store'}),j=await r.json();if(j.ok){setDays(j.days??[]);if(!date&&j.days?.[0]?.date)setDate(j.days[0].date)}}catch{}
+  }
+  async function loadDay(d:string){
+    if(!d)return;
+    try{const r=await fetch('/api/mt5/ingest?date='+encodeURIComponent(d),{cache:'no-store'}),j=await r.json();if(j.ok)setHistory(j.candles??[])}catch{}
+  }
+
+  useEffect(()=>{refresh();const id=setInterval(refresh,5000);return()=>clearInterval(id)},[]);
+  useEffect(()=>{if(mode==='history')loadDays()},[mode]);
+  useEffect(()=>{if(mode==='history'&&date)loadDay(date)},[mode,date]);
+
+  const candles=mode==='live'?(bridge?.candles??[]):history;
+  const pa=useMemo(()=>analyzePriceAction(candles,{swingLeft:swing,swingRight:swing,displacementRangeMultiple:disp,minBodyPercent:body}),[candles,swing,disp,body]);
+  const offset=bridge?.brokerUtcOffsetSeconds;
+  const offsetLabel=offset==null?'—':`UTC${offset>=0?'+':''}${offset/3600}`;
+  const latestBreak=pa.structureBreaks.at(-1);
+  const latestSweep=pa.sweeps.at(-1);
+
+  return <main>
+    <header className="hero">
+      <div><span className="eyebrow">PRICE ACTION LAB</span><h1>{bridge?.symbol??'NAS100'} Structure Engine</h1><p>Raw candles in. Objective market structure out. No strategy bias.</p></div>
+      <div className="status"><i className={bridge?.connected?'on':''}/><span>{bridge?.connected?'MT5 LIVE':'MT5 OFFLINE'}</span><b>{bridge?.lastCandle?.close.toFixed(2)??'—'}</b><small>{offsetLabel}</small></div>
+    </header>
+
+    <div className="topgrid">
+      <Metric label="Candles" value={candles.length.toLocaleString()} sub={mode==='live'?'live window':date||'historical day'}/>
+      <Metric label="Bias" value={pa.bias} sub={latestBreak?nyTime(latestBreak.time):'no break yet'}/>
+      <Metric label="Swings" value={pa.swings.length}/>
+      <Metric label="Sweeps" value={pa.sweeps.length} sub={latestSweep?nyTime(latestSweep.time):'none'}/>
+      <Metric label="Structure" value={pa.structureBreaks.length}/>
+      <Metric label="FVGs" value={pa.fvgs.length}/>
+    </div>
+
+    <div className="workspace">
+      <aside className="controlpanel">
+        <div className="panelhead"><span>Engine Settings</span><small>Adjust live</small></div>
+        <label>Swing confirmation <b>{swing} / {swing}</b><input type="range" min="1" max="6" step="1" value={swing} onChange={e=>setSwing(+e.target.value)}/></label>
+        <label>Displacement range <b>{disp.toFixed(1)}×</b><input type="range" min="1" max="3" step=".1" value={disp} onChange={e=>setDisp(+e.target.value)}/></label>
+        <label>Minimum body <b>{Math.round(body*100)}%</b><input type="range" min=".3" max=".9" step=".05" value={body} onChange={e=>setBody(+e.target.value)}/></label>
+        <div className="layergroup"><span>Chart Layers</span>{Object.entries(layers).map(([k,v])=><button key={k} className={v?'active':''} onClick={()=>setLayers(x=>({...x,[k]:!x[k as keyof Layers]}))}>{k}</button>)}</div>
+      </aside>
+
+      <section className="chartpanel">
+        <div className="toolbar">
+          <div className="segmented"><button className={mode==='live'?'active':''} onClick={()=>setMode('live')}>Live</button><button className={mode==='history'?'active':''} onClick={()=>setMode('history')}>History</button></div>
+          {mode==='history'&&<select value={date} onChange={e=>setDate(e.target.value)}>{days.map(d=><option key={d.date} value={d.date}>{dayLabel(d.date)} · {d.candles} candles</option>)}</select>}
+        </div>
+        <Chart candles={candles} pa={pa} layers={layers}/>
+      </section>
+    </div>
+
+    <div className="detailgrid">
+      <section><div className="panelhead"><span>Latest Structure</span><small>{pa.bias}</small></div>{latestBreak?<div className="eventcard"><strong>{latestBreak.classification} · {latestBreak.direction}</strong><span>{nyTime(latestBreak.time)}</span><p>Closed through {latestBreak.level.toFixed(2)} by {latestBreak.closeDistance.toFixed(2)} points.</p></div>:<p className="muted">No confirmed structure break in this sample.</p>}</section>
+      <section><div className="panelhead"><span>Latest Liquidity Event</span><small>{latestSweep?.closeBackInside?'rejected':'run'}</small></div>{latestSweep?<div className="eventcard"><strong>{latestSweep.direction} SWEEP</strong><span>{nyTime(latestSweep.time)}</span><p>Level {latestSweep.level.toFixed(2)} · depth {latestSweep.depth.toFixed(2)} · close back inside {latestSweep.closeBackInside?'yes':'no'}.</p></div>:<p className="muted">No sweep detected in this sample.</p>}</section>
+      <section><div className="panelhead"><span>Displacement</span><small>{pa.displacements.length}</small></div><div className="eventlist">{pa.displacements.slice(-4).reverse().map((d,i)=><div key={i}><b>{d.direction}</b><span>{nyTime(d.time)}</span><small>{d.rangeMultiple.toFixed(2)}× range · {Math.round(d.bodyPercent*100)}% body</small></div>)}</div></section>
+      <section><div className="panelhead"><span>FVG Quality</span><small>{pa.fvgs.filter(x=>x.displacementLinked).length} linked</small></div><div className="eventlist">{pa.fvgs.slice(-4).reverse().map((g,i)=><div key={i}><b>{g.direction}</b><span>{nyTime(g.time)}</span><small>{g.size.toFixed(2)} pts · {g.displacementLinked?'displacement linked':'unlinked'}</small></div>)}</div></section>
+    </div>
+
+    <div className="footnote">The database and MT5 bridge are retained only as market-data infrastructure. No 8AM, 9AM, Silver Bullet, entry, stop, target, or win-rate logic is used by this engine.</div>
+  </main>
+}
