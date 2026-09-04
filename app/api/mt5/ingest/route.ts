@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { backtest, Candle } from '../../../../lib/engine';
+import type { Candle, CandleDay } from '../../../../lib/candles';
 import { analyzePriceAction } from '../../../../lib/price-action';
 
 const SUPABASE_URL='https://bdakeikxbumaftbdylet.supabase.co';
@@ -8,96 +8,89 @@ const SYMBOL='NAS100';
 const TIMEFRAME='M1';
 const SOURCE='Vantage';
 
-type Payload={token?:string;symbol?:string;timeframe?:string;source?:string;brokerTimeRaw?:string;brokerTimeUtc?:string;brokerUtcOffsetSeconds?:number;candles?:Candle[];chunkIndex?:number;chunkTotal?:number;uploadId?:string;retryCount?:number;reset?:boolean};
+type Payload={
+  token?:string;symbol?:string;timeframe?:string;source?:string;
+  brokerTimeRaw?:string;brokerTimeUtc?:string;brokerUtcOffsetSeconds?:number;
+  candles?:Candle[];chunkIndex?:number;chunkTotal?:number;uploadId?:string;retryCount?:number
+};
 
 async function rpc(name:string,body:Record<string,unknown>){
- const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`,{
-   method:'POST',
-   headers:{'Content-Type':'application/json','apikey':SUPABASE_KEY,'Authorization':`Bearer ${SUPABASE_KEY}`},
-   body:JSON.stringify(body),
-   cache:'no-store'
- });
- const text=await r.text();
- if(!r.ok)throw new Error(`${name} ${r.status}: ${text}`);
- return text?JSON.parse(text):null;
+  const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':SUPABASE_KEY,'Authorization':`Bearer ${SUPABASE_KEY}`},
+    body:JSON.stringify(body),
+    cache:'no-store'
+  });
+  const text=await r.text();
+  if(!r.ok)throw new Error(`${name} ${r.status}: ${text}`);
+  return text?JSON.parse(text):null;
 }
-const nyDate=(iso:string)=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(iso));
-const compact=(s:ReturnType<typeof backtest>[0]|undefined)=>s?{referenceHour:s.referenceHour,direction:s.direction,result:s.result,r:s.r,validWindow:s.validWindow,entryTime:s.entryTime,rejectionReason:s.rejectionReason}:null;
 
 export async function GET(req:NextRequest){
- try{
-   const mode=req.nextUrl.searchParams.get('mode')||'live';
-   const symbol=req.nextUrl.searchParams.get('symbol')||SYMBOL;
-   const timeframe=req.nextUrl.searchParams.get('timeframe')||TIMEFRAME;
-   const source=req.nextUrl.searchParams.get('source')||SOURCE;
-   if(mode==='summary'){
-     const rawDays=await rpc('silverbullet_recent_days_v2',{p_symbol:symbol,p_timeframe:timeframe,p_source:source,p_days:30});
-     const days=(Array.isArray(rawDays)?rawDays:[]) as {date:string;candles:number}[];
-     const rows:{date:string;candles:number;s8:ReturnType<typeof compact>;s9:ReturnType<typeof compact>}[]=[];
-     for(const item of days){
-       const rawDay=await rpc('silverbullet_day_v2',{p_symbol:symbol,p_ny_date:item.date,p_timeframe:timeframe,p_source:source});
-       const day=(Array.isArray(rawDay)?rawDay:[]) as Candle[];
-       rows.push({date:item.date,candles:item.candles,s8:compact(backtest(day,8)[0]),s9:compact(backtest(day,9)[0])});
-     }
-     const valid=rows.flatMap(x=>[x.s8,x.s9]).filter((x):x is NonNullable<typeof x>=>Boolean(x&&x.validWindow));
-     const wins=valid.filter(x=>x.result==='WIN').length,losses=valid.filter(x=>x.result==='LOSS').length,open=valid.filter(x=>x.result==='OPEN').length,closed=wins+losses;
-     const byHour=(hour:8|9)=>{const xs=rows.map(x=>hour===8?x.s8:x.s9).filter((x):x is NonNullable<typeof x>=>Boolean(x&&x.validWindow));const w=xs.filter(x=>x.result==='WIN').length,l=xs.filter(x=>x.result==='LOSS').length,o=xs.filter(x=>x.result==='OPEN').length,c=w+l;return{setups:xs.length,wins:w,losses:l,open:o,winRate:c?w/c*100:0,netR:xs.reduce((a,x)=>a+x.r,0)}};
-     return NextResponse.json({ok:true,symbol,timeframe,source,rows,stats:{days:rows.length,setups:valid.length,wins,losses,open,winRate:closed?wins/closed*100:0,netR:valid.reduce((a,x)=>a+x.r,0)},byHour:{h8:byHour(8),h9:byHour(9)}});
-   }
-   const date=req.nextUrl.searchParams.get('date');
-   if(date){
-     const raw=await rpc('silverbullet_day_v2',{p_symbol:symbol,p_ny_date:date,p_timeframe:timeframe,p_source:source});
-     const candles=(Array.isArray(raw)?raw:[]) as Candle[];
-     const priceAction=analyzePriceAction(candles);
-     return NextResponse.json({ok:true,symbol,timeframe,source,date,candles,s8:backtest(candles,8)[0]??null,s9:backtest(candles,9)[0]??null,priceAction});
-   }
-   const live=await rpc('silverbullet_live_v2',{p_symbol:symbol,p_timeframe:timeframe,p_source:source,p_limit:720}) as {status?:Record<string,unknown>;candles?:Candle[]};
-   const status=live?.status??{},candles=live?.candles??[];
-   const dbStats=await rpc('silverbullet_db_stats',{p_symbol:symbol,p_timeframe:timeframe,p_source:source});
-   const lastSeen=typeof status.last_seen_at==='string'?new Date(status.last_seen_at).getTime():0;
-   return NextResponse.json({
-     ok:true,service:'SilverBulletAI MT5 Bridge',mode:'persistent',
-     connected:lastSeen>0&&Date.now()-lastSeen<120000,
-     symbol,timeframe,source,dbStats,
-     brokerTimeRaw:status.broker_time_raw??null,
-     brokerTimeUtc:status.broker_time_utc??null,
-     brokerUtcOffsetSeconds:status.broker_utc_offset_seconds??null,
-     analyzedAt:status.last_seen_at??null,
-     received:Number(status.candle_count??0),
-     syncStatus:status.sync_status??'IDLE',
-     syncChunkIndex:Number(status.chunk_index??-1),
-     syncChunkTotal:Number(status.chunk_total??0),
-     syncRetryCount:Number(status.retry_count??0),
-     lastCandle:candles.at(-1)??null,
-     candles
-   });
- }catch(e){
-   return NextResponse.json({ok:false,error:e instanceof Error?e.message:'Database error'},{status:500});
- }
+  try{
+    const mode=req.nextUrl.searchParams.get('mode')||'live';
+    const symbol=req.nextUrl.searchParams.get('symbol')||SYMBOL;
+    const timeframe=req.nextUrl.searchParams.get('timeframe')||TIMEFRAME;
+    const source=req.nextUrl.searchParams.get('source')||SOURCE;
+
+    if(mode==='days'){
+      const raw=await rpc('silverbullet_recent_days_v2',{p_symbol:symbol,p_timeframe:timeframe,p_source:source,p_days:60});
+      const days=(Array.isArray(raw)?raw:[]) as CandleDay[];
+      return NextResponse.json({ok:true,symbol,timeframe,source,days});
+    }
+
+    const date=req.nextUrl.searchParams.get('date');
+    if(date){
+      const raw=await rpc('silverbullet_day_v2',{p_symbol:symbol,p_ny_date:date,p_timeframe:timeframe,p_source:source});
+      const candles=(Array.isArray(raw)?raw:[]) as Candle[];
+      return NextResponse.json({ok:true,symbol,timeframe,source,date,candles,priceAction:analyzePriceAction(candles)});
+    }
+
+    const live=await rpc('silverbullet_live_v2',{p_symbol:symbol,p_timeframe:timeframe,p_source:source,p_limit:1200}) as {status?:Record<string,unknown>;candles?:Candle[]};
+    const status=live?.status??{},candles=live?.candles??[];
+    const dbStats=await rpc('silverbullet_db_stats',{p_symbol:symbol,p_timeframe:timeframe,p_source:source});
+    const lastSeen=typeof status.last_seen_at==='string'?new Date(status.last_seen_at).getTime():0;
+
+    return NextResponse.json({
+      ok:true,service:'Price Action Data Bridge',connected:lastSeen>0&&Date.now()-lastSeen<120000,
+      symbol,timeframe,source,dbStats,
+      brokerTimeRaw:status.broker_time_raw??null,
+      brokerTimeUtc:status.broker_time_utc??null,
+      brokerUtcOffsetSeconds:status.broker_utc_offset_seconds??null,
+      analyzedAt:status.last_seen_at??null,
+      received:Number(status.candle_count??0),
+      syncStatus:status.sync_status??'IDLE',
+      syncChunkIndex:Number(status.chunk_index??-1),
+      syncChunkTotal:Number(status.chunk_total??0),
+      syncRetryCount:Number(status.retry_count??0),
+      lastCandle:candles.at(-1)??null,
+      candles,
+      priceAction:analyzePriceAction(candles)
+    });
+  }catch(e){
+    return NextResponse.json({ok:false,error:e instanceof Error?e.message:'Database error'},{status:500});
+  }
 }
 
 export async function POST(req:NextRequest){
- const expected=process.env.MT5_BRIDGE_TOKEN;
- let body:Payload;
- try{body=JSON.parse((await req.text()).replace(/\0/g,'').trim()) as Payload}catch{return NextResponse.json({ok:false,error:'Invalid JSON payload'},{status:400})}
- if(expected&&body.token!==expected)return NextResponse.json({ok:false,error:'Unauthorized'},{status:401});
- if(!body.symbol||!Array.isArray(body.candles)||body.candles.length<1)return NextResponse.json({ok:false,error:'Expected symbol and candles[]'},{status:400});
- try{
-   const result=await rpc('silverbullet_ingest_chunk_v3',{
-     p_symbol:body.symbol,
-     p_timeframe:body.timeframe??TIMEFRAME,
-     p_source:body.source??SOURCE,
-     p_broker_time_raw:body.brokerTimeRaw??null,
-     p_broker_time_utc:body.brokerTimeUtc??null,
-     p_broker_utc_offset_seconds:Number(body.brokerUtcOffsetSeconds)||0,
-     p_upload_id:body.uploadId??body.symbol,
-     p_chunk_index:Number(body.chunkIndex)||0,
-     p_chunk_total:Number(body.chunkTotal)||1,
-     p_retry_count:Number(body.retryCount)||0,
-     p_candles:body.candles
-   });
-   return NextResponse.json({ok:true,chunkIndex:Number(body.chunkIndex)||0,chunkTotal:Number(body.chunkTotal)||1,complete:(Number(body.chunkIndex)||0)>=(Number(body.chunkTotal)||1)-1,database:'persistent',result});
- }catch(e){
-   return NextResponse.json({ok:false,error:e instanceof Error?e.message:'Database ingest failed'},{status:500});
- }
+  const expected=process.env.MT5_BRIDGE_TOKEN;
+  let body:Payload;
+  try{body=JSON.parse((await req.text()).replace(/\0/g,'').trim()) as Payload}
+  catch{return NextResponse.json({ok:false,error:'Invalid JSON payload'},{status:400})}
+
+  if(expected&&body.token!==expected)return NextResponse.json({ok:false,error:'Unauthorized'},{status:401});
+  if(!body.symbol||!Array.isArray(body.candles)||body.candles.length<1)return NextResponse.json({ok:false,error:'Expected symbol and candles[]'},{status:400});
+
+  try{
+    const result=await rpc('silverbullet_ingest_chunk_v3',{
+      p_symbol:body.symbol,p_timeframe:body.timeframe??TIMEFRAME,p_source:body.source??SOURCE,
+      p_broker_time_raw:body.brokerTimeRaw??null,p_broker_time_utc:body.brokerTimeUtc??null,
+      p_broker_utc_offset_seconds:Number(body.brokerUtcOffsetSeconds)||0,
+      p_upload_id:body.uploadId??body.symbol,p_chunk_index:Number(body.chunkIndex)||0,
+      p_chunk_total:Number(body.chunkTotal)||1,p_retry_count:Number(body.retryCount)||0,p_candles:body.candles
+    });
+    return NextResponse.json({ok:true,chunkIndex:Number(body.chunkIndex)||0,chunkTotal:Number(body.chunkTotal)||1,database:'persistent',result});
+  }catch(e){
+    return NextResponse.json({ok:false,error:e instanceof Error?e.message:'Database ingest failed'},{status:500});
+  }
 }
