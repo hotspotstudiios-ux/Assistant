@@ -1,22 +1,19 @@
-# SilverBulletAI — MT5 Bridge
+# MT5 Price Action Bridge
 
-This folder contains a **read-only** MetaTrader 5 Expert Advisor that sends M1 candle history to the web app.
+This Expert Advisor sends read-only M1 candle data from MetaTrader 5 to the Price Action Lab.
 
-## Install
+Flow:
+Broker → MT5 → PriceActionBridge EA → /api/mt5/ingest → Supabase candle store → Price Action Engine
 
-1. Open MetaTrader 5 desktop.
-2. File → Open Data Folder.
-3. Open `MQL5/Experts`.
-4. Copy `SilverBulletBridge.mq5` there.
-5. Open MetaEditor and compile it.
-6. In MT5 go to Tools → Options → Expert Advisors.
-7. Enable **Allow WebRequest for listed URL**.
-8. Add your deployed Vercel origin, e.g. `https://your-app.vercel.app`.
-9. Attach the EA to the broker symbol you trade.
-10. Set `ApiUrl` to `https://your-app.vercel.app/api/mt5/ingest`.
+The bridge does not place, modify, or close trades.
 
-The bridge never sends trade commands. It only reads M1 candles and posts them to the analyzer.
-
-## Authentication
-
-Set `MT5_BRIDGE_TOKEN` in Vercel and put the same value in the EA's `BridgeToken` input.
+## Current payload
+- symbol
+- timeframe
+- broker raw time
+- UTC-normalized time
+- broker UTC offset
+- OHLC candles
+- tick volume
+- spread
+- chunk metadata
