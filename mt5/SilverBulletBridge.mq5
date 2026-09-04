@@ -1,10 +1,12 @@
 #property strict
-#property version   "0.150"
+#property version   "0.160"
 #property description "Resilient chunked M1 bridge for SilverBulletAI"
 
 input string ApiUrl="https://assistant-ochre-five.vercel.app/api/mt5/ingest";
 input string BridgeToken="";
 input string SymbolToSend="";
+input string TimeframeToSend="M1";
+input string SourceName="";
 input int MinutesToSend=43200;
 input int ChunkSize=1500;
 input int SendEverySeconds=300;
@@ -21,6 +23,9 @@ int SendChunk(string sym,MqlRates &rates[],int oldestPos,int newestPos,int chunk
  string j="{";
  j+="\"token\":\""+JsonEscape(BridgeToken)+"\",";
  j+="\"symbol\":\""+JsonEscape(sym)+"\",";
+ j+="\"timeframe\":\""+JsonEscape(TimeframeToSend)+"\",";
+ string src=SourceName==""?AccountInfoString(ACCOUNT_SERVER):SourceName;
+ j+="\"source\":\""+JsonEscape(src)+"\",";
  j+="\"brokerTimeRaw\":\""+PlainTime(TimeCurrent())+"\",";
  j+="\"brokerTimeUtc\":\""+IsoTime(TimeCurrent()-offset)+"\",";
  j+="\"brokerUtcOffsetSeconds\":"+IntegerToString(offset)+",";
@@ -30,7 +35,7 @@ int SendChunk(string sym,MqlRates &rates[],int oldestPos,int newestPos,int chunk
  j+="\"retryCount\":"+IntegerToString(retryCount)+",";
  j+="\"candles\":[";
  bool first=true;
- for(int i=oldestPos;i>=newestPos;i--){if(!first)j+=",";first=false;datetime u=rates[i].time-offset;j+=StringFormat("{\"time\":\"%s\",\"open\":%.8f,\"high\":%.8f,\"low\":%.8f,\"close\":%.8f}",IsoTime(u),rates[i].open,rates[i].high,rates[i].low,rates[i].close);}
+ for(int i=oldestPos;i>=newestPos;i--){if(!first)j+=",";first=false;datetime u=rates[i].time-offset;j+=StringFormat("{\"time\":\"%s\",\"open\":%.8f,\"high\":%.8f,\"low\":%.8f,\"close\":%.8f,\"tickVolume\":%I64d,\"spread\":%d}",IsoTime(u),rates[i].open,rates[i].high,rates[i].low,rates[i].close,rates[i].tick_volume,rates[i].spread);}
  j+="]}";
  char post[],result[];string headers="Content-Type: application/json\r\n";int bytes=StringToCharArray(j,post,0,WHOLE_ARRAY,CP_UTF8);if(bytes>0)ArrayResize(post,bytes-1);
  ResetLastError();int status=WebRequest("POST",ApiUrl,headers,20000,post,result,headers);
