@@ -1,8 +1,8 @@
 #property strict
-#property version   "0.10"
+#property version   "0.100"
 #property description "Read-only M1 candle bridge for SilverBulletAI"
 
-input string ApiUrl = "https://YOUR-VERCEL-URL.vercel.app/api/mt5/ingest";
+input string ApiUrl = "https://assistant-ochre-five.vercel.app/api/mt5/ingest";
 input string BridgeToken = "";
 input string SymbolToSend = "";
 input int MinutesToSend = 900;
@@ -54,14 +54,15 @@ void OnTick() {
 
    char post[], result[];
    string headers = "Content-Type: application/json\r\n";
-   StringToCharArray(json, post, 0, WHOLE_ARRAY, CP_UTF8);
+   int bytes = StringToCharArray(json, post, 0, WHOLE_ARRAY, CP_UTF8);
+   if(bytes > 0) ArrayResize(post, bytes - 1);
 
    ResetLastError();
    int status = WebRequest("POST", ApiUrl, headers, 10000, post, result, headers);
 
    if(status == -1) {
       Print("SilverBulletBridge WebRequest failed. Error=", GetLastError());
-      Print("Add this URL in MT5: Tools > Options > Expert Advisors > Allow WebRequest: ", ApiUrl);
+      Print("Allow this origin in MT5 WebRequest settings: https://assistant-ochre-five.vercel.app");
       return;
    }
 
