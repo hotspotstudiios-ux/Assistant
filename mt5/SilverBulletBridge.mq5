@@ -1,5 +1,5 @@
 #property strict
-#property version   "0.110"
+#property version   "0.120"
 #property description "Read-only M1 candle bridge for SilverBulletAI"
 
 input string ApiUrl = "https://assistant-ochre-five.vercel.app/api/mt5/ingest";
@@ -23,6 +23,13 @@ string IsoTime(datetime t) {
       dt.year, dt.mon, dt.day, dt.hour, dt.min, dt.sec);
 }
 
+string PlainTime(datetime t) {
+   MqlDateTime dt;
+   TimeToStruct(t, dt);
+   return StringFormat("%04d-%02d-%02d %02d:%02d:%02d",
+      dt.year, dt.mon, dt.day, dt.hour, dt.min, dt.sec);
+}
+
 void OnTick() {
    if(TimeCurrent() - lastSend < SendEverySeconds) return;
    lastSend = TimeCurrent();
@@ -38,11 +45,13 @@ void OnTick() {
    }
 
    int brokerUtcOffsetSeconds = (int)(TimeCurrent() - TimeGMT());
-   datetime brokerUtc = TimeCurrent() - brokerUtcOffsetSeconds;
+   datetime brokerNow = TimeCurrent();
+   datetime brokerUtc = brokerNow - brokerUtcOffsetSeconds;
 
    string json = "{";
    json += "\"token\":\"" + JsonEscape(BridgeToken) + "\",";
    json += "\"symbol\":\"" + JsonEscape(sym) + "\",";
+   json += "\"brokerTimeRaw\":\"" + PlainTime(brokerNow) + "\",";
    json += "\"brokerTimeUtc\":\"" + IsoTime(brokerUtc) + "\",";
    json += "\"brokerUtcOffsetSeconds\":" + IntegerToString(brokerUtcOffsetSeconds) + ",";
    json += "\"candles\":[";
