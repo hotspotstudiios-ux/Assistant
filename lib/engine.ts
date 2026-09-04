@@ -71,5 +71,5 @@ export function backtest(c:Candle[],h:RefHour):Signal[]{
  if(validWindow){
    for(const z of xs.slice(touch)){const sl=x.dir==='LONG'?z.low<=stop:z.high>=stop,tp=x.dir==='LONG'?z.high>=target2R:z.low<=target2R;if(sl&&tp){result='LOSS';r=-1;break}if(sl){result='LOSS';r=-1;break}if(tp){result='WIN';r=2;break}}
  }
- return[{referenceHour:h,direction:x.dir,sweepTime:xs[sweep].time,returnTime:xs[ret].time,mssTime:xs[mss].time,entryTime:xs[touch].time,mssLevel,fvgLow:x.lo,fvgHigh:x.hi,fvgTime:xs[fvg].time,entry,stop,target2R,result,r,validWindow,rejectionReason:validWindow?null:'Entry occurred outside 09:00–10:00 New York window'}]
+ return[{referenceHour:h,direction:x.dir,sweepTime:xs[sweep].time,returnTime:xs[ret].time,mssTime:xs[mss].time,entryTime:xs[touch].time,mssLevel,fvgLow:lo,fvgHigh:hi,fvgTime:xs[fvg].time,entry,stop,target2R,result,r,validWindow,rejectionReason:validWindow?null:'Entry occurred outside 09:00–10:00 New York window'}]
 }
