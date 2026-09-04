@@ -20,10 +20,10 @@ def test_engine_detects_core_events():
         candle(0, 100, 101, 99, 100),
         candle(1, 100, 102, 99.5, 101),
         candle(2, 101, 105, 100, 104),   # swing high candidate
-        candle(3, 104, 104.5, 101, 102),
+        candle(3, 104, 104.5, 98, 102),    # confirmed internal swing low
         candle(4, 102, 103, 100, 101),
         candle(5, 101, 106, 100.5, 104), # sweeps 105 and closes back below
-        candle(6, 104, 104.2, 98, 99),   # bearish displacement / structure break
+        candle(6, 104, 104.2, 95, 96),   # bearish displacement / structure break
         candle(7, 99, 99.2, 95, 96),
     ]
 
