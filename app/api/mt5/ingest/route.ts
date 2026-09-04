@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { backtest, Candle } from '../../../../lib/engine';
+import { getBridgeStore, setBridgeStore } from '../../../../lib/bridge-store';
 
 type Payload = {
   token?: string;
@@ -9,11 +10,15 @@ type Payload = {
 };
 
 export async function GET() {
+  const store = getBridgeStore();
+  const lastSeenMs = store.analyzedAt ? Date.now() - new Date(store.analyzedAt).getTime() : Infinity;
+
   return NextResponse.json({
     ok: true,
     service: 'SilverBulletAI MT5 Bridge',
     mode: 'read-only',
-    endpoint: '/api/mt5/ingest'
+    ...store,
+    connected: lastSeenMs < 120000
   });
 }
 
@@ -40,15 +45,21 @@ export async function POST(req: NextRequest) {
       low: Number(c.low),
       close: Number(c.close)
     }))
-    .filter(c => c.time && [c.open,c.high,c.low,c.close].every(Number.isFinite));
+    .filter(c => c.time && [c.open,c.high,c.low,c.close].every(Number.isFinite))
+    .sort((a,b) => new Date(a.time).getTime() - new Date(b.time).getTime());
 
-  return NextResponse.json({
-    ok: true,
+  const analyzedAt = new Date().toISOString();
+  const next = setBridgeStore({
+    connected: true,
     symbol: body.symbol,
     brokerTime: body.brokerTime ?? null,
+    analyzedAt,
     received: candles.length,
-    analyzedAt: new Date().toISOString(),
+    lastCandle: candles.at(-1) ?? null,
+    candles,
     model8AM: backtest(candles, 8),
     model9AM: backtest(candles, 9)
   });
+
+  return NextResponse.json({ ok:true, ...next });
 }
