@@ -11,7 +11,7 @@ export type Signal={
 export type ModelState={stage:'WAITING'|'SWEEP'|'RETURN'|'MSS'|'FVG'|'SIGNAL'|'EXPIRED';direction:'LONG'|'SHORT'|null;refHigh:number|null;refLow:number|null;detail:string};
 
 const ENTRY_START_MIN=9*60;
-const ENTRY_END_MIN=10*60;
+const ENTRY_END_MIN=11*60+30;
 
 const ny=(iso:string)=>{const p=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).formatToParts(new Date(iso));return Object.fromEntries(p.map(x=>[x.type,x.value]));};
 const hm=(c:Candle)=>{const p=ny(c.time);return{h:+p.hour,m:+p.minute,key:`${p.year}-${p.month}-${p.day}`}};
@@ -53,7 +53,7 @@ function candidate(candles:Candle[],h:RefHour){
  for(let i=fvg+1;i<xs.length;i++){if(xs[i].low<=edge&&xs[i].high>=edge){touch=i;break}}
  if(touch<0)return{ref,stage:'FVG' as const,dir,detail:'Valid FVG found; waiting for first retracement/touch'};
  const validWindow=mins(xs[touch].time)>=ENTRY_START_MIN&&mins(xs[touch].time)<ENTRY_END_MIN;
- return{ref,stage:(validWindow?'SIGNAL':'EXPIRED') as 'SIGNAL'|'EXPIRED',dir,detail:validWindow?'Valid first-touch FVG entry':'Setup completed, but first-touch entry is outside 09:00–10:00 NY',xs,sweep,ret,swing,mss,mssLevel,fvg,touch,lo,hi,validWindow};
+ return{ref,stage:(validWindow?'SIGNAL':'EXPIRED') as 'SIGNAL'|'EXPIRED',dir,detail:validWindow?'Valid first-touch FVG entry':'Setup completed, but first-touch entry is outside 09:00–11:30 NY',xs,sweep,ret,swing,mss,mssLevel,fvg,touch,lo,hi,validWindow};
 }
 export function modelState(c:Candle[],h:RefHour):ModelState{const x=candidate(c,h);return{stage:x.stage,direction:x.dir,refHigh:x.ref?.high??null,refLow:x.ref?.low??null,detail:x.detail}}
 export function backtest(c:Candle[],h:RefHour):Signal[]{
@@ -71,5 +71,5 @@ export function backtest(c:Candle[],h:RefHour):Signal[]{
  if(validWindow){
    for(const z of xs.slice(touch)){const sl=x.dir==='LONG'?z.low<=stop:z.high>=stop,tp=x.dir==='LONG'?z.high>=target2R:z.low<=target2R;if(sl&&tp){result='LOSS';r=-1;break}if(sl){result='LOSS';r=-1;break}if(tp){result='WIN';r=2;break}}
  }
- return[{referenceHour:h,direction:x.dir,sweepTime:xs[sweep].time,returnTime:xs[ret].time,mssTime:xs[mss].time,entryTime:xs[touch].time,mssLevel,fvgLow:lo,fvgHigh:hi,fvgTime:xs[fvg].time,entry,stop,target2R,result,r,validWindow,rejectionReason:validWindow?null:'Entry occurred outside 09:00–10:00 New York window'}]
+ return[{referenceHour:h,direction:x.dir,sweepTime:xs[sweep].time,returnTime:xs[ret].time,mssTime:xs[mss].time,entryTime:xs[touch].time,mssLevel,fvgLow:lo,fvgHigh:hi,fvgTime:xs[fvg].time,entry,stop,target2R,result,r,validWindow,rejectionReason:validWindow?null:'Entry occurred outside 09:00–11:30 New York window'}]
 }
