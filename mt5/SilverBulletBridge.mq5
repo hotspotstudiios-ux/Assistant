@@ -1,11 +1,11 @@
 #property strict
-#property version   "0.120"
+#property version   "0.130"
 #property description "Read-only M1 candle bridge for SilverBulletAI"
 
 input string ApiUrl = "https://assistant-ochre-five.vercel.app/api/mt5/ingest";
 input string BridgeToken = "";
 input string SymbolToSend = "";
-input int MinutesToSend = 2880;
+input int MinutesToSend = 43200;
 input int SendEverySeconds = 30;
 
 datetime lastSend = 0;
