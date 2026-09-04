@@ -4,3 +4,16 @@
 
 .badge.expired{border-color:#ef7580;color:#ef7580}
 .rejectReason{padding:10px 12px;border-radius:9px;background:#25131a;color:#ff9ca5;font-size:12px;line-height:1.45}
+
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.stats div{background:#0c1a25;border:1px solid #1b3347;border-radius:13px;padding:14px}
+.stats span{display:block;color:#8198aa;font-size:10px;text-transform:uppercase;letter-spacing:.7px}
+.stats b{display:block;margin-top:6px;font-size:20px}
+.batchTable{background:#0c1a25;border:1px solid #1b3347;border-radius:17px;padding:10px;margin-bottom:14px;max-height:390px;overflow:auto}
+.batchHead,.batchTable button{display:grid;grid-template-columns:1.4fr 1fr 1fr;align-items:center;gap:8px;width:100%;padding:10px;border:0;border-bottom:1px solid #162b3b;background:transparent;color:#dcecff;text-align:left}
+.batchHead{color:#8198aa;font-size:10px;text-transform:uppercase;letter-spacing:.7px}
+.batchTable button{cursor:pointer}
+.batchTable button.selected{background:#102638;border-radius:9px}
+.batchTable button small{display:block;color:#60798c;margin-top:3px}
+.batchTable button strong{font-size:11px}
+@media(max-width:600px){.stats{grid-template-columns:repeat(2,1fr)}.batchTable{max-height:300px}}
