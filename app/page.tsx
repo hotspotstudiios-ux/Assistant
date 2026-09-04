@@ -88,7 +88,7 @@ export default function Home(){
       <Metric label="Swings" value={pa.swings.length}/>
       <Metric label="Sweeps" value={pa.sweeps.filter(x=>x.quality==='REJECTION').length} sub={latestSweep?latestSweep.quality:'none'}/>
       <Metric label="Structure" value={pa.structureBreaks.length}/>
-      <Metric label="FVGs" value={pa.fvgs.length}/>
+      <Metric label="Sequences" value={pa.sequences.filter(x=>x.status==='CONFIRMED').length} sub={`${pa.sequences.length} reactions`}/>
     </div>
 
     <div className="workspace">
@@ -110,6 +110,8 @@ export default function Home(){
         <Chart candles={candles} pa={pa} layers={layers}/>
       </section>
     </div>
+
+    <div className="sequencebar"><div><span>Reaction Pipeline</span><b>Liquidity → Displacement → MSS → FVG</b></div><div className="sequencechips">{pa.sequences.slice(-6).reverse().map((s,i)=><span key={i} className={s.status.toLowerCase()}>{s.direction} · {s.status} · {s.score}/6</span>)}</div></div>
 
     <div className="detailgrid">
       <section><div className="panelhead"><span>Latest Structure</span><small>{pa.bias}</small></div>{latestBreak?<div className="eventcard"><strong>{latestBreak.classification} · {latestBreak.direction}</strong><span>{nyTime(latestBreak.time)}</span><p>Closed through {latestBreak.levelLabel} {latestBreak.level.toFixed(2)} by {latestBreak.closeDistance.toFixed(2)} points ({latestBreak.closeDistanceMultiple.toFixed(2)}× average range).</p></div>:<p className="muted">No confirmed structure break in this sample.</p>}</section>
