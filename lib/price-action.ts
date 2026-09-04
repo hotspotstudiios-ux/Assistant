@@ -51,6 +51,16 @@ export type StructureBreak={
   biasAfter:StructureBias;
 };
 
+export type ReactionSequence={
+  direction:Direction;
+  sweep:LiquiditySweep;
+  displacement:Displacement|null;
+  structureBreak:StructureBreak|null;
+  fvg:FVG|null;
+  status:'SWEEP_ONLY'|'DISPLACEMENT'|'MSS'|'CONFIRMED';
+  score:number;
+};
+
 export type FVG={
   direction:Direction;
   time:string;
@@ -69,6 +79,7 @@ export type PriceActionAnalysis={
   displacements:Displacement[];
   structureBreaks:StructureBreak[];
   fvgs:FVG[];
+  sequences:ReactionSequence[];
   meta:{
     candles:number;
     swingLeft:number;
@@ -256,6 +267,38 @@ export function detectFVGs(c:Candle[],displacements:Displacement[],minSizeMultip
   return out;
 }
 
+
+export function detectReactionSequences(
+  sweeps:LiquiditySweep[],
+  displacements:Displacement[],
+  structureBreaks:StructureBreak[],
+  fvgs:FVG[],
+  maxBars=12
+):ReactionSequence[]{
+  return sweeps.filter(s=>s.quality==='REJECTION').map(sweep=>{
+    const displacement=displacements.find(d=>
+      d.direction===sweep.direction&&d.index>sweep.index&&d.index<=sweep.index+maxBars
+    )??null;
+    const structureBreak=structureBreaks.find(b=>
+      b.direction===sweep.direction&&
+      b.classification==='MSS'&&
+      b.index>sweep.index&&b.index<=sweep.index+maxBars&&
+      (!displacement||b.index>=displacement.index)
+    )??null;
+    const fvg=fvgs.find(g=>
+      g.direction===sweep.direction&&g.index>sweep.index&&g.index<=sweep.index+maxBars&&
+      (!displacement||g.index>=displacement.index-1)
+    )??null;
+
+    let status:ReactionSequence['status']='SWEEP_ONLY',score=1;
+    if(displacement){status='DISPLACEMENT';score++}
+    if(structureBreak){status='MSS';score+=2}
+    if(structureBreak&&fvg&&fvg.displacementLinked){status='CONFIRMED';score+=2}
+
+    return{direction:sweep.direction,sweep,displacement,structureBreak,fvg,status,score};
+  });
+}
+
 export function analyzePriceAction(
   candles:Candle[],
   options?:{
@@ -281,10 +324,11 @@ export function analyzePriceAction(
   const displacements=detectDisplacements(candles,20,displacementRangeMultiple,minBodyPercent);
   const structureBreaks=detectStructureBreaks(candles,swings,minBreakCloseMultiple);
   const fvgs=detectFVGs(candles,displacements,minFvgSizeMultiple);
+  const sequences=detectReactionSequences(sweeps,displacements,structureBreaks,fvgs);
   const bias=structureBreaks.at(-1)?.biasAfter??'NEUTRAL';
 
   return{
-    bias,swings,sweeps,displacements,structureBreaks,fvgs,
+    bias,swings,sweeps,displacements,structureBreaks,fvgs,sequences,
     meta:{candles:candles.length,swingLeft,swingRight,displacementRangeMultiple,minBodyPercent,minBreakCloseMultiple}
   };
 }
