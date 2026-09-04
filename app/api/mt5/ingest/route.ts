@@ -4,8 +4,10 @@ import { backtest, Candle } from '../../../../lib/engine';
 const SUPABASE_URL='https://bdakeikxbumaftbdylet.supabase.co';
 const SUPABASE_KEY='sb_publishable_551Oulnh5G-hTwziT9al-Q_ok0rUyBR';
 const SYMBOL='NAS100';
+const TIMEFRAME='M1';
+const SOURCE='Vantage';
 
-type Payload={token?:string;symbol?:string;brokerTimeRaw?:string;brokerTimeUtc?:string;brokerUtcOffsetSeconds?:number;candles?:Candle[];chunkIndex?:number;chunkTotal?:number;uploadId?:string;retryCount?:number;reset?:boolean};
+type Payload={token?:string;symbol?:string;timeframe?:string;source?:string;brokerTimeRaw?:string;brokerTimeUtc?:string;brokerUtcOffsetSeconds?:number;candles?:Candle[];chunkIndex?:number;chunkTotal?:number;uploadId?:string;retryCount?:number;reset?:boolean};
 
 async function rpc(name:string,body:Record<string,unknown>){
  const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`,{
@@ -25,33 +27,36 @@ export async function GET(req:NextRequest){
  try{
    const mode=req.nextUrl.searchParams.get('mode')||'live';
    const symbol=req.nextUrl.searchParams.get('symbol')||SYMBOL;
+   const timeframe=req.nextUrl.searchParams.get('timeframe')||TIMEFRAME;
+   const source=req.nextUrl.searchParams.get('source')||SOURCE;
    if(mode==='summary'){
-     const rawDays=await rpc('silverbullet_recent_days',{p_symbol:symbol,p_days:30});
+     const rawDays=await rpc('silverbullet_recent_days_v2',{p_symbol:symbol,p_timeframe:timeframe,p_source:source,p_days:30});
      const days=(Array.isArray(rawDays)?rawDays:[]) as {date:string;candles:number}[];
      const rows:{date:string;candles:number;s8:ReturnType<typeof compact>;s9:ReturnType<typeof compact>}[]=[];
      for(const item of days){
-       const rawDay=await rpc('silverbullet_day',{p_symbol:symbol,p_ny_date:item.date});
+       const rawDay=await rpc('silverbullet_day_v2',{p_symbol:symbol,p_ny_date:item.date,p_timeframe:timeframe,p_source:source});
        const day=(Array.isArray(rawDay)?rawDay:[]) as Candle[];
        rows.push({date:item.date,candles:item.candles,s8:compact(backtest(day,8)[0]),s9:compact(backtest(day,9)[0])});
      }
      const valid=rows.flatMap(x=>[x.s8,x.s9]).filter((x):x is NonNullable<typeof x>=>Boolean(x&&x.validWindow));
      const wins=valid.filter(x=>x.result==='WIN').length,losses=valid.filter(x=>x.result==='LOSS').length,open=valid.filter(x=>x.result==='OPEN').length,closed=wins+losses;
      const byHour=(hour:8|9)=>{const xs=rows.map(x=>hour===8?x.s8:x.s9).filter((x):x is NonNullable<typeof x>=>Boolean(x&&x.validWindow));const w=xs.filter(x=>x.result==='WIN').length,l=xs.filter(x=>x.result==='LOSS').length,o=xs.filter(x=>x.result==='OPEN').length,c=w+l;return{setups:xs.length,wins:w,losses:l,open:o,winRate:c?w/c*100:0,netR:xs.reduce((a,x)=>a+x.r,0)}};
-     return NextResponse.json({ok:true,symbol,rows,stats:{days:rows.length,setups:valid.length,wins,losses,open,winRate:closed?wins/closed*100:0,netR:valid.reduce((a,x)=>a+x.r,0)},byHour:{h8:byHour(8),h9:byHour(9)}});
+     return NextResponse.json({ok:true,symbol,timeframe,source,rows,stats:{days:rows.length,setups:valid.length,wins,losses,open,winRate:closed?wins/closed*100:0,netR:valid.reduce((a,x)=>a+x.r,0)},byHour:{h8:byHour(8),h9:byHour(9)}});
    }
    const date=req.nextUrl.searchParams.get('date');
    if(date){
-     const raw=await rpc('silverbullet_day',{p_symbol:symbol,p_ny_date:date});
+     const raw=await rpc('silverbullet_day_v2',{p_symbol:symbol,p_ny_date:date,p_timeframe:timeframe,p_source:source});
      const candles=(Array.isArray(raw)?raw:[]) as Candle[];
-     return NextResponse.json({ok:true,symbol,date,candles,s8:backtest(candles,8)[0]??null,s9:backtest(candles,9)[0]??null});
+     return NextResponse.json({ok:true,symbol,timeframe,source,date,candles,s8:backtest(candles,8)[0]??null,s9:backtest(candles,9)[0]??null});
    }
-   const live=await rpc('silverbullet_live',{p_symbol:symbol,p_limit:720}) as {status?:Record<string,unknown>;candles?:Candle[]};
+   const live=await rpc('silverbullet_live_v2',{p_symbol:symbol,p_timeframe:timeframe,p_source:source,p_limit:720}) as {status?:Record<string,unknown>;candles?:Candle[]};
    const status=live?.status??{},candles=live?.candles??[];
+   const dbStats=await rpc('silverbullet_db_stats',{p_symbol:symbol,p_timeframe:timeframe,p_source:source});
    const lastSeen=typeof status.last_seen_at==='string'?new Date(status.last_seen_at).getTime():0;
    return NextResponse.json({
      ok:true,service:'SilverBulletAI MT5 Bridge',mode:'persistent',
      connected:lastSeen>0&&Date.now()-lastSeen<120000,
-     symbol,
+     symbol,timeframe,source,dbStats,
      brokerTimeRaw:status.broker_time_raw??null,
      brokerTimeUtc:status.broker_time_utc??null,
      brokerUtcOffsetSeconds:status.broker_utc_offset_seconds??null,
@@ -76,8 +81,10 @@ export async function POST(req:NextRequest){
  if(expected&&body.token!==expected)return NextResponse.json({ok:false,error:'Unauthorized'},{status:401});
  if(!body.symbol||!Array.isArray(body.candles)||body.candles.length<1)return NextResponse.json({ok:false,error:'Expected symbol and candles[]'},{status:400});
  try{
-   const result=await rpc('silverbullet_ingest_chunk_v2',{
+   const result=await rpc('silverbullet_ingest_chunk_v3',{
      p_symbol:body.symbol,
+     p_timeframe:body.timeframe??TIMEFRAME,
+     p_source:body.source??SOURCE,
      p_broker_time_raw:body.brokerTimeRaw??null,
      p_broker_time_utc:body.brokerTimeUtc??null,
      p_broker_utc_offset_seconds:Number(body.brokerUtcOffsetSeconds)||0,
